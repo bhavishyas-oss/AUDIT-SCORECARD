@@ -183,16 +183,55 @@ async function uploadMedia(src,type='image'){
   throw new Error(d.error?.message||'Upload failed');
 }
 
+// ── Google Apps Script communication ────────────────────
+// POST uses mode:'no-cors' because Apps Script redirects through
+// script.googleusercontent.com which strips CORS headers on preflight.
+// With no-cors the browser sends the request without preflight — data
+// reaches doPost() and is written to the sheet even though the response
+// is "opaque" (unreadable). We treat any non-throw as success.
 async function postToSheet(payload){
-  if(!sheetOK())throw new Error('Apps Script URL not configured');
-  const res=await fetch(SHEET_URL,{method:'POST',body:JSON.stringify(payload)});
-  return res.json();
+  if(!sheetOK())throw new Error('Apps Script URL not configured.\nCheck SHEET_URL at the top of this file.');
+  try{
+    await fetch(SHEET_URL,{
+      method:'POST',
+      mode:'no-cors',          // Skip preflight — required for Apps Script
+      body:JSON.stringify(payload)
+      // No Content-Type header → defaults to text/plain → no preflight
+    });
+    return{ok:true};           // Can't read opaque response; assume success
+  }catch(e){
+    throw new Error('Network error posting to sheet: '+e.message);
+  }
+}
+
+// GET uses JSONP (script-tag injection) which has zero CORS restrictions.
+// Apps Script doGet() wraps the JSON in the callback function name.
+function _jsonpFetch(url){
+  return new Promise((resolve,reject)=>{
+    const cb='_gs_cb_'+Date.now();
+    const tag=document.createElement('script');
+    const timer=setTimeout(()=>{
+      cleanup();
+      reject(new Error('Timed out. Verify the Apps Script is deployed with "Anyone" access.'));
+    },20000);
+    function cleanup(){
+      clearTimeout(timer);
+      try{delete window[cb];}catch(_){}
+      if(tag.parentNode)tag.parentNode.removeChild(tag);
+    }
+    window[cb]=(data)=>{cleanup();resolve(data);};
+    tag.src=url+'&callback='+cb+'&_t='+Date.now();
+    tag.onerror=()=>{
+      cleanup();
+      reject(new Error('Cannot reach Apps Script URL.\n• Confirm the script is deployed as a Web App.\n• Execute as: Me  |  Access: Anyone'));
+    };
+    document.head.appendChild(tag);
+  });
 }
 
 async function fetchSheet(){
-  if(!sheetOK())return{ok:false,records:[],error:'Apps Script URL not configured'};
-  const res=await fetch(SHEET_URL+'?action=get');
-  return res.json();
+  if(!sheetOK())return{ok:false,records:[],error:'Apps Script URL not configured.\nSet SHEET_URL at the top of index.html.'};
+  return _jsonpFetch(SHEET_URL+'?action=get');
 }
 
 // ── Shared components ──────────────────────────────────
@@ -423,10 +462,12 @@ function FillScorecard({onBack}){
 
     setUpP(p=>({...p,phase:'submitting'}));
     try{
+      // postToSheet uses no-cors → returns opaque response → always treat as success
+      // if the script URL is wrong or network is down, fetch() itself throws
       await postToSheet({site:info.site,week:parseInt(info.week),date:new Date(info.date).toLocaleDateString('en-IN'),auditor:info.auditor,score,areaScores,answers:processed});
       setUpP({done:0,total:0,phase:''});setStep('done');
     }catch(e){
-      setUpP({done:0,total:0,phase:''});setErrMsg(e.message||'Submission failed');setStep('error');
+      setUpP({done:0,total:0,phase:''});setErrMsg(e.message||'Submission failed. Check Apps Script URL and deployment settings.');setStep('error');
     }
   };
 
