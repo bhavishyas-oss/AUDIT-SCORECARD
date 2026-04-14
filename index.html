@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
 <title>Weekly Audit Scorecard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -10,117 +10,132 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:#0d1117;color:#e6edf3;font-family:'IBM Plex Sans',-apple-system,sans-serif;overflow-x:hidden}
 #app{min-height:100vh}
-select option{background:#161b22;color:#e6edf3}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:#0d1117}
 ::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
 input,select,textarea,button{font-family:inherit}
 input[type=date]{color-scheme:dark}
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.93);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+select option{background:#161b22;color:#e6edf3}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.fi{animation:fadeIn 0.25s ease-out}
-@media print{
-  .no-print{display:none!important}
-  body{background:white!important;color:#111!important}
-  *{background:white!important;color:#111!important;border-color:#ccc!important}
-  h1,h2,h3{color:#111!important;font-size:18px}
-}
-@media(max-width:640px){
-  .desktop-only{display:none!important}
-  .grid-2{grid-template-columns:1fr!important}
-}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.fi{animation:fadeIn .25s ease-out}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+.blink{animation:blink 1s infinite}
+/* View Dashboard table */
+.vdt{width:100%;border-collapse:collapse;font-size:12px}
+.vdt th{background:#161b22;color:#8b949e;padding:10px 14px;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.8px;border-bottom:2px solid #30363d;white-space:nowrap;position:sticky;top:0;z-index:5}
+.vdt td{padding:10px 14px;border-bottom:1px solid #30363d22;vertical-align:middle}
+.vdt tbody tr:hover td{background:#161b2240}
+.mlink{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#1a2236;border:1px solid #30363d;border-radius:4px;font-size:10px;font-family:'IBM Plex Mono',monospace;color:#60a5fa;text-decoration:none;transition:all .15s;cursor:pointer}
+.mlink:hover{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd}
+@media(max-width:640px){.hide-sm{display:none!important}}
 </style>
 </head>
 <body>
 <div id="app"><div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8b949e;font-family:monospace;font-size:13px;letter-spacing:2px">LOADING…</div></div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+
 <script type="module">
-import{h,render,Fragment}from'https://esm.sh/preact@10.22.0';
+import{h,render}from'https://esm.sh/preact@10.22.0';
 import{useState,useRef,useMemo,useEffect,useCallback}from'https://esm.sh/preact@10.22.0/hooks';
 import htm from'https://esm.sh/htm@3.1.1';
 const html=htm.bind(h);
-// Register datalabels plugin globally for all Chart.js instances
-if(window.ChartDataLabels)Chart.register(window.ChartDataLabels);
 
-// ═══ CREDENTIALS ═══
-const CREDS={viewer:{id:'viewer',password:'audit2024'},filler:{id:'auditor',password:'fill2024'}};
+// ═══════════════════════════════════════════════════════
+//  ⚙  CONFIG  — replace these three values
+// ═══════════════════════════════════════════════════════
+//  1. Deploy Code.gs as Web App → paste URL below
+//  2. Create free Cloudinary account → cloudinary.com
+//     Settings → Upload → Add upload preset (unsigned)
+const SHEET_URL   = 'https://script.google.com/macros/s/AKfycbwZn8WNN80h0R01HcasMFbYzCQBmpeWhaPJVBVIWELsGlmVVEYLROX_16TY50R7xjaH/exec';
+const CL_CLOUD    = 'YOUR_CLOUDINARY_CLOUD_NAME';
+const CL_PRESET   = 'YOUR_UNSIGNED_UPLOAD_PRESET';
+const LOGIN_ID    = 'auditor';
+const LOGIN_PASS  = 'audit2024';
+// ═══════════════════════════════════════════════════════
 
-// ═══ SITES ═══
-const SITES=['BANGALORE','MUMBAI','SURAT','ONE NCR','NCR BILASPUR','NCR TAURU','NCR BAMNOLI','JAIPUR','INDORE','HYDERABAD','AHMEDABAD','NAGPUR','KOLKATA','KOLKATA 2','LUCKNOW','PATNA','LUDIANA','COIMBATORE','CHENNAI','GUWAHATI','VIJAYAWADA','HUBLI','SAGAR'];
+// ── Data ──────────────────────────────────────────────
+const SITES=['BANGALORE','MUMBAI','SURAT','ONE NCR','NCR BILASPUR','NCR TAURU','NCR BAMNOLI',
+  'JAIPUR','INDORE','HYDERABAD','AHMEDABAD','NAGPUR','KOLKATA','KOLKATA 2','LUCKNOW','PATNA',
+  'LUDIANA','COIMBATORE','CHENNAI','GUWAHATI','VIJAYAWADA','HUBLI','SAGAR'];
 
-const FACILITY_MAP={
-  Large:['NCR BILASPUR','ONE NCR','SURAT','NCR TAURU','BANGALORE'],
-  Medium:['KOLKATA 2','KOLKATA','LUCKNOW','PATNA','NAGPUR','AHMEDABAD','JAIPUR','HYDERABAD','NCR BAMNOLI','MUMBAI'],
-  Small:['LUDIANA','CHENNAI','GUWAHATI','VIJAYAWADA','COIMBATORE','HUBLI','INDORE','SAGAR']
+const AREAS=['INBOUND OUTBOUND STAGING','BBB AREA','PRIMARY SORTING AREA',
+  'SECONDARY SORTING AREA','EXCEPTION AREA','VOLUMETRIC HANDLING'];
+
+const ACLR={
+  'INBOUND OUTBOUND STAGING':'#f59e0b','BBB AREA':'#3b82f6',
+  'PRIMARY SORTING AREA':'#10b981','SECONDARY SORTING AREA':'#8b5cf6',
+  'EXCEPTION AREA':'#ef4444','VOLUMETRIC HANDLING':'#06b6d4'
 };
 
-// ═══ AREAS & QUESTIONS (52 total) ═══
-const AREAS=['INBOUND OUTBOUND STAGING','BBB AREA','PRIMARY SORTING AREA','SECONDARY SORTING AREA','EXCEPTION AREA','VOLUMETRIC HANDLING'];
-const AREA_COLORS={'INBOUND OUTBOUND STAGING':'#f59e0b','BBB AREA':'#3b82f6','PRIMARY SORTING AREA':'#10b981','SECONDARY SORTING AREA':'#8b5cf6','EXCEPTION AREA':'#ef4444','VOLUMETRIC HANDLING':'#06b6d4'};
+const ASHORT={
+  'INBOUND OUTBOUND STAGING':'IOS','BBB AREA':'BBB','PRIMARY SORTING AREA':'PSA',
+  'SECONDARY SORTING AREA':'SSA','EXCEPTION AREA':'EXC','VOLUMETRIC HANDLING':'VOL'
+};
 
-const QUESTIONS={
+const QS={
   'INBOUND OUTBOUND STAGING':[
     'Open shipments found near the dock area?',
-    'Is Real time taping happening at the DC(dock & staging area)?',
+    'Is Real time taping happening at the DC (dock & staging area)?',
     'Are the dock team doing proper segregation of the bags while unloading?',
-    'Is there a separate dock exception area or cowkart at the dock ?',
-    'Are damaged/problematic shipments or bags are handed over to Exception Team in real time?',
+    'Is there a separate dock exception area or cowkart at the dock?',
+    'Are damaged/problematic shipments or bags handed over to Exception Team in real time?',
     'Is real time clearance happening at dock exception?',
-    'Are bags being handled properly during loading and unloading? (shipments being thrown /stepped on)',
-    'Is the In/Out-scanning activity of the bags are done under the CCTV coverage? (scanning not to be done inside the vehicle or at the staging area)',
+    'Are bags being handled properly during loading and unloading?',
+    'Is the In/Out-scanning activity of the bags done under CCTV coverage?',
     'Are bags in-scanned (received) in real time while unloading?',
-    'Are the dock shutters closed after unloading/loading a vehicle? (cut-off limit 2hours)',
-    'Are all bags correctly sorted at the staging areas? (check for mis-sorted bags at staging)',
-    'Is bag integrity maintained at the staging area and during loading? (any torn /damaged bags)',
-    'Are there any random trolley of bags left unattended at dock/staging area? (High ageing bags found near dock and staging)',
+    'Are the dock shutters closed after unloading/loading a vehicle? (cut-off 2hrs)',
+    'Are all bags correctly sorted at the staging areas?',
+    'Is bag integrity maintained at the staging area and during loading?',
+    'Are there any random trolleys of bags left unattended at dock/staging area?',
     'Is FIFO getting maintained for locations which are on hold?',
-    'Are all bags at the staging area sealed with valid seals and manifest labels? (Check for invalid seals and no labels)',
+    'Are all bags at the staging area sealed with valid seals and manifest labels?',
     'Are GCs stepping on the manifests at staging or while unloading?',
-    'Are the GCs using their own credentials for scanning while loading or unloading?',
-    'Is the vehicle seal applied by the security/dock team?(should not handed over to the driver for closing)',
+    'Are GCs using their own credentials for scanning while loading or unloading?',
+    'Is the vehicle seal applied by the security/dock team?',
     'Are the vehicle seals being verified by the security team as per the docket copy?',
   ],
   'BBB AREA':[
     'Are GCs at BBB Area using their own credentials?',
     'Are different area barcodes being used for each BBB receiving station?',
-    'Are Temp IDs being used for BBB receiving, if so are the GC credentials being recorded by the Ops team?',
-    'Are EXP barcodes being stuck and in-scanned for all exception shipment found during BBB in real time?',
+    'Are Temp IDs being used for BBB receiving with GC credentials recorded by Ops?',
+    'Are EXP barcodes being stuck and in-scanned for all exception shipments found during BBB in real time?',
     'Are real time taping of damage shipments/empty happening at BBB?',
     'Are bags being emptied inside out at the BBB area?',
     'Are the BBB layouts fixed & under CCTV camera coverage?',
   ],
   'PRIMARY SORTING AREA':[
-    'Are all shipments properly placed and not lying loose on the floor under PTL or near sorter areas? (scan & check /primary sorting)',
-    'Are there dedicated bins for rejection shipments at primary layout? (Dedicated bins for damaged, hazy, CFGR, etc.)',
+    'Are all shipments properly placed and not lying loose on the floor under PTL or near sorter areas?',
+    'Are there dedicated bins for rejection shipments at primary layout?',
     'Are the primary layouts fixed?',
     'Are inside out process of manifests being followed at the primary sorting area?',
     'Are Higher ageing FWD Cancel and REV shipments (2+ ageing) found in FWD layouts?',
   ],
   'SECONDARY SORTING AREA':[
-    'Are barcodes of different layouts placed separately? (should not pasted next to each other)',
-    'Are the correct bin barcodes being pasted on the PTL? (Closing manifests using bin barcodes printed on sheets is prohibited)',
-    'Have bags been set up all the 15/30 bins on the PTL? (case in point where GCs were putting bags for high volume bins and for other bins shipments were kept on rack and subsequently put into bag)',
-    'At the PTLs, Is manifesting process being done on PTL rack ? (no other asset e.g. bin, bag stand, trolley are not allowed to use for manifesting)',
-    'Are the GCs removing the bags from the PTL and then closing a manifest ?',
+    'Are barcodes of different layouts placed separately?',
+    'Are the correct bin barcodes being pasted on the PTL?',
+    'Have bags been set up all the 15/30 bins on the PTL?',
+    'Is manifesting process being done on PTL rack at the PTLs?',
+    'Are the GCs removing the bags from the PTL and then closing a manifest?',
     'Is bulk manifesting/bulk label pasting being followed at the site?',
-    'Are yellow bags being used for creating Within DC bags at the site? (White bags are not allowed)',
-    'Is only one person working on PTL in manifesting process? (No helping hand person can be deployed for even for the bag sealing & closing)',
-    'Are inside out process of manifest being followed at the secondary sorting area? (DSC)',
-    'Are there dedicated bins for rejection shipments at secondary layouts? (Dedicated bins for damaged, hazy, CFGR, etc.)',
-    'Are Problematic shipments being to exception area every 1 hour from all the processing layouts? (hand-overing shipments at shift end is not allowed)',
-    'Are problematic shipments from BBB, primary sorting and secondary sorting being mixed into a single trolley before hand-overing to the exception team?',
-    'Are the GCs closing the bags at secondary layouts by hole-punch process?',
+    'Are yellow bags being used for creating Within DC bags at the site?',
+    'Is only one person working on PTL in manifesting process?',
+    'Are inside out process of manifest being followed at the secondary sorting area?',
+    'Are there dedicated bins for rejection shipments at secondary layouts?',
+    'Are Problematic shipments being moved to exception area every 1 hour?',
+    'Are problematic shipments from BBB, primary and secondary being mixed into a single trolley?',
+    'Are GCs closing the bags at secondary layouts by hole-punch process?',
     'Are the manifests being created with shipments below 80% capacity?',
-    'Does the Ops give prior intimation on layout changes or when they are running duplicate PTL layouts?',
+    'Does the Ops give prior intimation on layout changes or duplicate PTL layouts?',
     'Are all corners of the DC clear of any shipment pile-ups?',
     'Are higher ageing Rejection shipments found on floor? (CFGR/WPTR)',
   ],
   'EXCEPTION AREA':[
     'Are EXP barcodes being pasted on all shipments which are pending at exception?',
-    'Are all the orphans shipments entered in the exception sheet using EXP barcodes in real time?',
+    'Are all the orphan shipments entered in the exception sheet using EXP barcodes in real time?',
     'Are HOV shipments being kept inside HOV cages?',
-    'Are orphan shipments from BBB, FWD processing primary area kept separately at the exception are with date wise segregation?',
+    'Are orphan shipments from BBB and FWD processing kept separately with date wise segregation?',
   ],
   'VOLUMETRIC HANDLING':[
     'Are volumetric shipments handled properly during loading and unloading?',
@@ -133,1498 +148,701 @@ const QUESTIONS={
   ],
 };
 
-// ═══ EMPTY DATA (populated by Fill Scorecard submissions) ═══
-function genMock(){
-  // No pre-filled mock data — dashboard shows real submissions only
-  const data={};
-  SITES.forEach(site=>{
-    data[site]={};
-    for(let wk=1;wk<=52;wk++){
-      const ans={};const areaScores={};
-      AREAS.forEach(area=>{
-        ans[area]={};
-        QUESTIONS[area].forEach(q=>{ans[area][q]={answer:null,remark:'',images:[],videos:[]};});
-        areaScores[area]=0;
-      });
-      data[site][wk]={answers:ans,areaScores,auditor:'—',date:'—',score:0,empty:true};
-    }
-  });
-  return data;
-}
-const MOCK=genMock();
-
-function mergeData(mock,subs){
-  const m=JSON.parse(JSON.stringify(mock));
-  Object.entries(subs).forEach(([site,weeks])=>{
-    if(!m[site])m[site]={};
-    Object.entries(weeks).forEach(([wk,rec])=>{
-      m[site][parseInt(wk)]={...rec,empty:false};
-    });
-  });
-  return m;
-}
-
-// ═══ RELIABLE SYNC — per-record localStorage strategy ═══
-// Stores each DC+week as an individual localStorage key.
-// This prevents the single-blob quota overflow that caused silent data loss.
-// Images are stripped before persistence (too large); they live in memory only.
-// Legacy audit_subs key is migrated automatically on first load.
-
-const _PFX='audit_r2_'; // v2 prefix — isolated from old single-blob key
-
-function _recKey(site,wk){
-  // encodeURIComponent handles site names with spaces/special chars (e.g. "KOLKATA 2")
-  return _PFX+encodeURIComponent(site)+'__'+wk;
-}
-
-// ── One-time data reset for BANGALORE and SURAT ──
-// Runs once on fresh load (gated by a reset-marker key).
-// All historic records for these two sites are wiped; future submissions persist normally.
-const _RESET_KEY='audit_reset_v1';
-function _purgeResetSites(){
-  if(localStorage.getItem(_RESET_KEY))return; // already done
-  const resetSites=['BANGALORE','SURAT'];
-  try{
-    const idx=new Set(JSON.parse(localStorage.getItem(_PFX+'idx')||'[]'));
-    const newIdx=new Set();
-    idx.forEach(pair=>{
-      const sep=pair.lastIndexOf('::');
-      const site=pair.slice(0,sep);
-      if(resetSites.includes(site)){
-        try{localStorage.removeItem(_recKey(site,parseInt(pair.slice(sep+2))));}catch{}
-      } else {
-        newIdx.add(pair);
-      }
-    });
-    localStorage.setItem(_PFX+'idx',JSON.stringify([...newIdx]));
-    localStorage.setItem(_RESET_KEY,'1');
-  }catch(e){console.warn('[AUDIT RESET] Purge failed:',e);}
-}
-_purgeResetSites();
-
-function _stripImages(rec){
-  // Remove base64 images and blob video URLs so localStorage entry stays small
-  return{...rec,answers:Object.fromEntries(
-    Object.entries(rec.answers||{}).map(([area,qs])=>[area,
-      Object.fromEntries(Object.entries(qs).map(([q,a])=>[q,{...a,images:[],videos:[]}]))
-    ])
-  )};
-}
-
-function _saveRec(site,wk,rec){
-  try{
-    localStorage.setItem(_recKey(site,wk),JSON.stringify(_stripImages(rec)));
-    // Maintain a small index of all stored site::wk pairs
-    const idx=new Set(JSON.parse(localStorage.getItem(_PFX+'idx')||'[]'));
-    idx.add(site+'::'+wk);
-    localStorage.setItem(_PFX+'idx',JSON.stringify([...idx]));
-  }catch(e){
-    // Log the failure — do NOT suppress silently
-    console.warn('[AUDIT SYNC] localStorage save failed for',site,'wk',wk,e.name,e.message);
-  }
-}
-
-function _loadAllRecs(){
-  const out={};
-  // Load new per-record format
-  try{
-    const idx=JSON.parse(localStorage.getItem(_PFX+'idx')||'[]');
-    idx.forEach(pair=>{
-      try{
-        const sep=pair.lastIndexOf('::');
-        const site=pair.slice(0,sep);
-        const wk=parseInt(pair.slice(sep+2));
-        const raw=localStorage.getItem(_recKey(site,wk));
-        if(raw&&!isNaN(wk)&&site){
-          if(!out[site])out[site]={};
-          out[site][wk]=JSON.parse(raw);
-        }
-      }catch(e2){console.warn('[AUDIT SYNC] Failed to load record:',pair,e2);}
-    });
-  }catch(e){console.warn('[AUDIT SYNC] Failed to load index:',e);}
-  // Migrate from legacy single-blob audit_subs key (old format)
-  try{
-    const leg=localStorage.getItem('audit_subs');
-    if(leg){
-      const legData=JSON.parse(leg);
-      let migrated=0;
-      Object.entries(legData).forEach(([site,weeks])=>{
-        Object.entries(weeks).forEach(([wkStr,rec])=>{
-          const wk=parseInt(wkStr);
-          if(!rec.empty&&!(out[site]&&out[site][wk])){
-            if(!out[site])out[site]={};
-            out[site][wk]=rec;
-            _saveRec(site,wk,rec); // migrate to new per-record format
-            migrated++;
-          }
-        });
-      });
-      if(migrated>0){
-        console.log('[AUDIT SYNC] Migrated',migrated,'records from legacy storage');
-        // Remove old key to free space
-        try{localStorage.removeItem('audit_subs');}catch{}
-      }
-    }
-  }catch(e){console.warn('[AUDIT SYNC] Legacy migration failed:',e);}
-  return out;
-}
-
-function _mergeSubs(prev,incoming){
-  // Deep merge: never drop existing entries, only add missing ones
-  const out={};
-  Object.entries(prev).forEach(([site,weeks])=>{out[site]={...weeks};});
-  Object.entries(incoming).forEach(([site,weeks])=>{
-    if(!out[site])out[site]={};
-    Object.entries(weeks).forEach(([wk,rec])=>{
-      const k=parseInt(wk);
-      // Only fill in if the slot is missing — never silently overwrite
-      if(!out[site][k])out[site][k]=rec;
-    });
-  });
-  return out;
-}
-
-// ═══ UTILS ═══
-function scoreColor(s){if(s>=80)return'#10b981';if(s>=60)return'#f59e0b';return'#ef4444';}
-function toNeg(q){
-  if(q.startsWith('IS '))return'NO '+q.slice(3);
-  if(q.startsWith('ARE '))return'NOT '+q.slice(4);
-  if(q.startsWith('HAS '))return'HAS NOT '+q.slice(4);
-  return'FAILED: '+q;
-}
-function getWeekNum(date){
-  const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
-  const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);
-  const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1));
-  return Math.ceil((((d-ys)/86400000)+1)/7);
-}
-
-// ═══ THEME ═══
-const C={bg:'#0d1117',card:'#161b22',border:'#30363d',accent:'#f59e0b',accentBg:'rgba(245,158,11,0.1)',text:'#e6edf3',muted:'#8b949e',pass:'#10b981',fail:'#ef4444',na:'#6b7280',blue:'#3b82f6',purple:'#8b5cf6'};
-const mono="'IBM Plex Mono','Courier New',monospace";
+// ── Theme ──────────────────────────────────────────────
+const C={
+  bg:'#0d1117',card:'#161b22',border:'#30363d',
+  accent:'#f59e0b',abl:'rgba(245,158,11,.1)',
+  text:'#e6edf3',muted:'#8b949e',
+  pass:'#10b981',fail:'#ef4444',na:'#6b7280',
+  blue:'#3b82f6',purple:'#8b5cf6'
+};
+const mono="'IBM Plex Mono',monospace";
 const card=(x={})=>({background:C.card,border:`1px solid ${C.border}`,borderRadius:8,...x});
-function Btn({col=C.accent,bg='transparent',px=16,py=9,fs=11,fw=600,extra={},onClick,disabled,children,cls=''}){
-  const s={background:bg,color:col,border:`1px solid ${col}55`,borderRadius:6,padding:`${py}px ${px}px`,fontSize:fs,fontFamily:mono,fontWeight:fw,cursor:disabled?'not-allowed':'pointer',letterSpacing:0.8,textTransform:'uppercase',transition:'all 0.15s',opacity:disabled?0.4:1,...extra};
-  return html`<button onClick=${onClick} disabled=${disabled} style=${s} class=${cls}>${children}</button>`;
+
+// ── Utils ──────────────────────────────────────────────
+const sc=v=>v>=80?C.pass:v>=60?C.accent:C.fail;
+function weekNum(d){const u=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=u.getUTCDay()||7;u.setUTCDate(u.getUTCDate()+4-day);const y=new Date(Date.UTC(u.getUTCFullYear(),0,1));return Math.ceil((((u-y)/864e5)+1)/7);}
+
+// ── Cloud helpers ──────────────────────────────────────
+const cloudOK=()=>CL_CLOUD&&!CL_CLOUD.startsWith('YOUR_');
+const sheetOK=()=>SHEET_URL&&!SHEET_URL.startsWith('YOUR_');
+
+async function uploadMedia(src,type='image'){
+  if(!cloudOK())return null;
+  const fd=new FormData();
+  fd.append('upload_preset',CL_PRESET);
+  let blob;
+  if(src instanceof File||src instanceof Blob){blob=src;}
+  else if(typeof src==='string'&&(src.startsWith('data:')||src.startsWith('blob:'))){
+    blob=await fetch(src).then(r=>r.blob());
+  }else return null;
+  fd.append('file',blob);
+  const res=await fetch(`https://api.cloudinary.com/v1_1/${CL_CLOUD}/${type}/upload`,{method:'POST',body:fd});
+  const d=await res.json();
+  if(d.secure_url)return d.secure_url;
+  throw new Error(d.error?.message||'Upload failed');
 }
 
-// ═══ SHARED COMPONENTS ═══
-function ScoreBadge({score,sz=13}){const c=scoreColor(score);return html`<span style=${{background:c+'22',color:c,border:`1px solid ${c}44`,borderRadius:4,padding:'2px 8px',fontSize:sz,fontFamily:mono,fontWeight:700}}>${score}%</span>`;}
-function Bar({v,color,h=6}){return html`<div style=${{background:C.border,borderRadius:h/2,height:h}}><div style=${{background:color,width:`${v}%`,height:'100%',borderRadius:h/2,transition:'width 0.4s ease'}}/></div>`;}
-function AreaBar({label,value,color}){return html`<div style=${{marginBottom:12}}><div style=${{display:'flex',justifyContent:'space-between',marginBottom:5}}><span style=${{fontSize:11,color:C.muted,fontFamily:mono,letterSpacing:0.2}}>${label}</span><span style=${{fontSize:12,color,fontFamily:mono,fontWeight:700}}>${value}%</span></div><${Bar} v=${value} color=${color}/></div>`;}
-function SH({children,c=C.muted}){return html`<div style=${{color:c,fontSize:13,fontFamily:mono,letterSpacing:1.2,fontWeight:700,marginBottom:16,textTransform:'uppercase',borderLeft:`3px solid ${c}55`,paddingLeft:10}}>${children}</div>`;}
-
-function ChartComp({type,data,options,style={}}){
-  const ref=useRef(null);const cref=useRef(null);
-  useEffect(()=>{
-    if(!ref.current)return;
-    if(cref.current)cref.current.destroy();
-    cref.current=new Chart(ref.current,{type,data,options});
-    return()=>{if(cref.current)cref.current.destroy();};
-  },[JSON.stringify(data)]);
-  return html`<canvas ref=${ref} style=${style}/>`;
+async function postToSheet(payload){
+  if(!sheetOK())throw new Error('Apps Script URL not configured');
+  const res=await fetch(SHEET_URL,{method:'POST',body:JSON.stringify(payload)});
+  return res.json();
 }
 
-// ═══ MEDIA LIGHTBOX — images + video, zoom, prev/next ═══
-// items: [{type:'image',src:'...'} | {type:'video',url:'...',name:'...'}]
-function MediaLightbox({items,idx:startIdx,onClose}){
-  const[idx,setIdx]=useState(startIdx||0);
-  const[zoom,setZoom]=useState(1);
-  const[drag,setDrag]=useState({x:0,y:0,dragging:false,ox:0,oy:0});
-  const dragRef=useRef({x:0,y:0,dragging:false,ox:0,oy:0});
+async function fetchSheet(){
+  if(!sheetOK())return{ok:false,records:[],error:'Apps Script URL not configured'};
+  const res=await fetch(SHEET_URL+'?action=get');
+  return res.json();
+}
 
-  useEffect(()=>{setZoom(1);setDrag({x:0,y:0,dragging:false,ox:0,oy:0});},[idx]);
+// ── Shared components ──────────────────────────────────
+function Badge({score}){const c=sc(score);return html`<span style=${{background:c+'22',color:c,border:`1px solid ${c}44`,borderRadius:4,padding:'3px 10px',fontFamily:mono,fontSize:13,fontWeight:700}}>${score}%</span>`;}
+function PBar({v,color='#f59e0b',h=6}){return html`<div style=${{background:C.border,borderRadius:h/2,height:h}}><div style=${{background:color,width:`${Math.min(100,Math.max(0,v))}%`,height:'100%',borderRadius:h/2,transition:'width .4s'}}/></div>`;}
 
-  if(!items||items.length===0)return null;
-  const item=items[idx]||items[0];
-  const isImg=item.type==='image';
-  const isVid=item.type==='video';
-
-  const onWheel=(e)=>{if(!isImg)return;e.preventDefault();setZoom(z=>Math.min(6,Math.max(1,z-(e.deltaY*0.002))));};
-  const onMDown=(e)=>{if(zoom<=1)return;dragRef.current={...drag,dragging:true,ox:e.clientX-drag.x,oy:e.clientY-drag.y};setDrag(d=>({...d,dragging:true}));};
-  const onMMove=(e)=>{if(!dragRef.current.dragging)return;const nx=e.clientX-dragRef.current.ox,ny=e.clientY-dragRef.current.oy;dragRef.current={...dragRef.current,x:nx,y:ny};setDrag(d=>({...d,x:nx,y:ny}));};
-  const onMUp=()=>{dragRef.current={...dragRef.current,dragging:false};setDrag(d=>({...d,dragging:false}));};
-
-  const prev=()=>{setIdx(i=>Math.max(0,i-1));};
-  const next=()=>{setIdx(i=>Math.min(items.length-1,i+1));};
-
-  const btnBase={background:'rgba(255,255,255,0.08)',color:C.text,border:`1px solid ${C.border}`,borderRadius:6,fontFamily:mono,fontSize:12,cursor:'pointer',padding:'9px 20px',transition:'all 0.15s'};
-
-  return html`<div class="modal-overlay" onClick=${onClose} onMouseMove=${onMMove} onMouseUp=${onMUp}>
-    <div onClick=${e=>e.stopPropagation()} style=${{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',maxWidth:'96vw',width:'100%',userSelect:'none'}}>
-
-      ${/* ── top bar ── */null}
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',marginBottom:12,gap:12}}>
-        <span style=${{color:C.muted,fontFamily:mono,fontSize:11}}>${item.type==='video'?'🎥':'📷'} ${idx+1} / ${items.length}${item.name?' · '+item.name:''}</span>
-        <div style=${{display:'flex',gap:8,alignItems:'center'}}>
-          ${isImg?html`
-            <button onClick=${()=>setZoom(z=>Math.min(6,+(z+0.5).toFixed(1)))} style=${{...btnBase,padding:'6px 14px',fontSize:14}}>＋</button>
-            <span style=${{color:C.accent,fontFamily:mono,fontSize:11,minWidth:36,textAlign:'center'}}>${Math.round(zoom*100)}%</span>
-            <button onClick=${()=>{setZoom(z=>Math.max(1,+(z-0.5).toFixed(1)));setDrag({x:0,y:0,dragging:false,ox:0,oy:0});}} style=${{...btnBase,padding:'6px 14px',fontSize:14}}>－</button>
-            <button onClick=${()=>{setZoom(1);setDrag({x:0,y:0,dragging:false,ox:0,oy:0});}} style=${{...btnBase,fontSize:11}}>RESET</button>
-          `:''}
-          <button onClick=${onClose} style=${{background:C.fail+'33',color:C.fail,border:`1px solid ${C.fail}`,borderRadius:6,padding:'6px 14px',cursor:'pointer',fontFamily:mono,fontSize:12}}>✕ CLOSE</button>
-        </div>
+// ── Media Lightbox ─────────────────────────────────────
+function Lightbox({items,idx:s0,onClose}){
+  const[i,setI]=useState(s0||0);
+  if(!items?.length)return null;
+  const it=items[i]||items[0];
+  const btn={background:'rgba(255,255,255,.08)',color:C.text,border:`1px solid ${C.border}`,borderRadius:6,fontFamily:mono,fontSize:12,cursor:'pointer',padding:'8px 18px'};
+  return html`<div class="overlay" onClick=${onClose}>
+    <div onClick=${e=>e.stopPropagation()} style=${{display:'flex',flexDirection:'column',alignItems:'center',maxWidth:'96vw',width:'100%',gap:12}}>
+      <div style=${{display:'flex',justifyContent:'space-between',width:'100%',alignItems:'center'}}>
+        <span style=${{color:C.muted,fontFamily:mono,fontSize:11}}>${it.type==='video'?'🎥':'📷'} ${i+1}/${items.length}</span>
+        <button onClick=${onClose} style=${{background:C.fail+'33',color:C.fail,border:`1px solid ${C.fail}`,borderRadius:6,padding:'6px 16px',cursor:'pointer',fontFamily:mono,fontSize:12}}>✕ CLOSE</button>
       </div>
-
-      ${/* ── media viewer ── */null}
-      <div style=${{overflow:'hidden',borderRadius:10,background:'#0a0d12',width:'100%',display:'flex',justifyContent:'center',alignItems:'center',minHeight:300,maxHeight:'72vh',position:'relative',cursor:isImg&&zoom>1?'grab':'default'}}
-        onWheel=${onWheel} onMouseDown=${onMDown}>
-        ${isImg?html`<img src=${item.src}
-          style=${{
-            maxWidth:'100%',maxHeight:'72vh',objectFit:'contain',display:'block',
-            transform:`scale(${zoom}) translate(${drag.x/zoom}px,${drag.y/zoom}px)`,
-            transformOrigin:'center',transition:drag.dragging?'none':'transform 0.15s',
-            cursor:zoom>1?'grab':'default',pointerEvents:'none'
-          }} alt=""/>`:''}
-        ${isVid?html`<video src=${item.url} controls autoPlay
-          style=${{maxWidth:'100%',maxHeight:'72vh',display:'block',borderRadius:8,outline:'none',background:'#000'}}/>`:''}
+      <div style=${{borderRadius:10,background:'#0a0d12',width:'100%',display:'flex',justifyContent:'center',alignItems:'center',minHeight:260,maxHeight:'68vh',overflow:'hidden'}}>
+        ${it.type==='image'?html`<img src=${it.src} style=${{maxWidth:'100%',maxHeight:'68vh',objectFit:'contain'}}/>`:html`<video src=${it.url||it.src} controls autoPlay style=${{maxWidth:'100%',maxHeight:'68vh',borderRadius:8}}/>`}
       </div>
-
-      ${/* ── thumbnail strip ── */null}
-      ${items.length>1?html`
-        <div style=${{display:'flex',gap:6,marginTop:12,flexWrap:'wrap',justifyContent:'center',maxWidth:'90vw',padding:'4px 0',overflowX:'auto'}}>
-          ${items.map((it,i)=>html`<div key=${i} onClick=${()=>setIdx(i)}
-            style=${{width:52,height:52,flexShrink:0,borderRadius:6,overflow:'hidden',cursor:'pointer',
-              border:`2px solid ${i===idx?C.accent:C.border}`,transition:'border-color 0.2s',position:'relative',background:'#0a0d12'}}>
-            ${it.type==='image'?html`<img src=${it.src} style=${{width:'100%',height:'100%',objectFit:'cover',display:'block',pointerEvents:'none'}}/>`:
-            html`<div style=${{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'#06b6d4',fontSize:22,background:'#0a2030'}}>🎥</div>`}
-          </div>`)}
-        </div>
-      `:''}
-
-      ${/* ── prev/next ── */null}
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,gap:16,width:'100%',maxWidth:400}}>
-        <button onClick=${prev} disabled=${idx===0} style=${{...btnBase,opacity:idx===0?0.3:1,cursor:idx===0?'default':'pointer',flex:1}}>← PREV</button>
-        <button onClick=${next} disabled=${idx===items.length-1} style=${{...btnBase,opacity:idx===items.length-1?0.3:1,cursor:idx===items.length-1?'default':'pointer',flex:1}}>NEXT →</button>
+      ${items.length>1?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'center'}}>
+        ${items.map((x,j)=>html`<div key=${j} onClick=${()=>setI(j)} style=${{width:50,height:50,borderRadius:6,overflow:'hidden',cursor:'pointer',border:`2px solid ${j===i?C.accent:C.border}`,background:'#0a0d12'}}>
+          ${x.type==='image'?html`<img src=${x.src} style=${{width:'100%',height:'100%',objectFit:'cover'}}/>`:html`<div style=${{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#0a2030',color:'#06b6d4',fontSize:20}}>🎥</div>`}
+        </div>`)}
+      </div>`:''}
+      <div style=${{display:'flex',gap:10,width:'100%',maxWidth:380}}>
+        <button onClick=${()=>setI(j=>Math.max(0,j-1))} disabled=${i===0} style=${{...btn,flex:1,opacity:i===0?.3:1}}>← PREV</button>
+        <button onClick=${()=>setI(j=>Math.min(items.length-1,j+1))} disabled=${i===items.length-1} style=${{...btn,flex:1,opacity:i===items.length-1?.3:1}}>NEXT →</button>
       </div>
     </div>
   </div>`;
 }
 
-// ── helper: convert mixed images/videos from an answer into MediaLightbox items ──
-function answerToItems(ans){
-  const imgs=(ans?.images||[]).map(src=>({type:'image',src}));
-  const vids=(ans?.videos||[]).map(v=>({type:'video',url:v.url,name:v.name}));
-  return[...imgs,...vids];
-}
-
-// ── helper: collect all media items for a given area from a record ──
-function areaMediaItems(rec,area){
-  return QUESTIONS[area].flatMap(q=>answerToItems(rec?.answers?.[area]?.[q]));
-}
-
-// ═══ ANNOTATION MODAL — draw on a captured photo before saving ═══
-function AnnotationModal({imgSrc,onSave,onDiscard}){
-  const canRef=useRef(null);
-  const[drawing,setDrawing]=useState(false);
-  const[color,setColor]=useState('#ef4444');
-  const[size,setSize]=useState(4);
-  const[tool,setTool]=useState('pen'); // 'pen' | 'eraser'
-  const lastPt=useRef(null);
-
-  useEffect(()=>{
-    if(!canRef.current||!imgSrc)return;
-    const canvas=canRef.current;
-    const ctx=canvas.getContext('2d');
-    const img=new Image();
-    img.onload=()=>{
-      canvas.width=img.naturalWidth;
-      canvas.height=img.naturalHeight;
-      ctx.drawImage(img,0,0);
-    };
-    img.src=imgSrc;
-  },[imgSrc]);
-
-  const getPos=(e,canvas)=>{
-    const rect=canvas.getBoundingClientRect();
-    const scaleX=canvas.width/rect.width;
-    const scaleY=canvas.height/rect.height;
-    const src=e.touches?e.touches[0]:e;
-    return{x:(src.clientX-rect.left)*scaleX,y:(src.clientY-rect.top)*scaleY};
-  };
-
-  const startDraw=(e)=>{
-    setDrawing(true);
-    const pt=getPos(e,canRef.current);
-    lastPt.current=pt;
-  };
-  const doDraw=(e)=>{
-    if(!drawing||!canRef.current)return;
-    e.preventDefault();
-    const ctx=canRef.current.getContext('2d');
-    const pt=getPos(e,canRef.current);
-    ctx.beginPath();
-    ctx.moveTo(lastPt.current.x,lastPt.current.y);
-    ctx.lineTo(pt.x,pt.y);
-    ctx.strokeStyle=tool==='eraser'?'#ffffff':color;
-    ctx.lineWidth=tool==='eraser'?size*6:size;
-    ctx.lineCap='round';
-    ctx.lineJoin='round';
-    ctx.globalCompositeOperation=tool==='eraser'?'destination-out':'source-over';
-    ctx.stroke();
-    lastPt.current=pt;
-  };
-  const endDraw=()=>{setDrawing(false);lastPt.current=null;};
-
-  const save=()=>{if(canRef.current)onSave(canRef.current.toDataURL('image/png'));};
-  const COLORS=['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ffffff','#000000'];
-
-  return html`<div class="modal-overlay" onClick=${e=>e.stopPropagation()}>
-    <div style=${{background:C.card,borderRadius:12,padding:16,width:'100%',maxWidth:680,maxHeight:'92vh',display:'flex',flexDirection:'column',gap:12}}>
+// ── Annotation modal ───────────────────────────────────
+function Annotate({src,onSave,onDiscard}){
+  const cv=useRef(null);const[draw,setDraw]=useState(false);const[clr,setClr]=useState('#ef4444');const[sz,setSz]=useState(4);const[tool,setTool]=useState('pen');const last=useRef(null);
+  useEffect(()=>{if(!cv.current||!src)return;const el=cv.current,ctx=el.getContext('2d'),img=new Image();img.onload=()=>{el.width=img.naturalWidth;el.height=img.naturalHeight;ctx.drawImage(img,0,0);};img.src=src;},[src]);
+  const pt=(e,el)=>{const r=el.getBoundingClientRect(),s=e.touches?e.touches[0]:e;return{x:(s.clientX-r.left)*el.width/r.width,y:(s.clientY-r.top)*el.height/r.height};};
+  const sd=e=>{setDraw(true);last.current=pt(e,cv.current);};
+  const dd=e=>{if(!draw||!cv.current)return;e.preventDefault();const ctx=cv.current.getContext('2d'),p=pt(e,cv.current);ctx.beginPath();ctx.moveTo(last.current.x,last.current.y);ctx.lineTo(p.x,p.y);ctx.strokeStyle=tool==='eraser'?'#fff':clr;ctx.lineWidth=tool==='eraser'?sz*6:sz;ctx.lineCap='round';ctx.lineJoin='round';ctx.globalCompositeOperation=tool==='eraser'?'destination-out':'source-over';ctx.stroke();last.current=p;};
+  const ed=()=>{setDraw(false);last.current=null;};
+  const COLS=['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#fff','#111'];
+  return html`<div class="overlay" onClick=${e=>e.stopPropagation()}>
+    <div style=${{background:C.card,borderRadius:12,padding:16,width:'100%',maxWidth:680,maxHeight:'92vh',display:'flex',flexDirection:'column',gap:10}}>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <div style=${{color:C.accent,fontFamily:mono,fontSize:12,fontWeight:700,letterSpacing:1}}>✏ ANNOTATE IMAGE</div>
+        <span style=${{color:C.accent,fontFamily:mono,fontSize:12,fontWeight:700}}>✏ ANNOTATE IMAGE</span>
         <div style=${{display:'flex',gap:8}}>
-          <button onClick=${save} style=${{background:C.pass+'33',color:C.pass,border:`1px solid ${C.pass}`,borderRadius:6,padding:'7px 16px',fontFamily:mono,fontSize:12,fontWeight:700,cursor:'pointer'}}>✓ SAVE</button>
-          <button onClick=${onDiscard} style=${{background:C.fail+'22',color:C.fail,border:`1px solid ${C.fail}`,borderRadius:6,padding:'7px 16px',fontFamily:mono,fontSize:12,cursor:'pointer'}}>✕ DISCARD</button>
+          <button onClick=${()=>cv.current&&onSave(cv.current.toDataURL())} style=${{background:C.pass+'33',color:C.pass,border:`1px solid ${C.pass}`,borderRadius:6,padding:'6px 16px',fontFamily:mono,fontSize:12,fontWeight:700,cursor:'pointer'}}>✓ SAVE</button>
+          <button onClick=${onDiscard} style=${{background:C.fail+'22',color:C.fail,border:`1px solid ${C.fail}`,borderRadius:6,padding:'6px 16px',fontFamily:mono,fontSize:12,cursor:'pointer'}}>✕ DISCARD</button>
         </div>
       </div>
-      <div style=${{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
-        <div style=${{display:'flex',gap:6}}>
-          ${COLORS.map(c=>html`<div key=${c} onClick=${()=>{setColor(c);setTool('pen');}} style=${{width:22,height:22,borderRadius:'50%',background:c,cursor:'pointer',border:`2px solid ${color===c&&tool==='pen'?'#fff':C.border}`,transition:'border-color 0.15s'}}/>`)}
-        </div>
-        <div style=${{display:'flex',gap:6,marginLeft:8}}>
-          ${[2,4,8,14].map(s=>html`<div key=${s} onClick=${()=>setSize(s)} style=${{width:s+10,height:s+10,borderRadius:'50%',background:size===s?C.accent:C.muted,cursor:'pointer',border:`2px solid ${size===s?C.accent:C.border}`,transition:'all 0.15s'}}/>`)}
-        </div>
-        <button onClick=${()=>setTool(t=>t==='eraser'?'pen':'eraser')} style=${{background:tool==='eraser'?C.accentBg:'transparent',color:tool==='eraser'?C.accent:C.muted,border:`1px solid ${tool==='eraser'?C.accent:C.border}`,borderRadius:6,padding:'5px 14px',fontFamily:mono,fontSize:11,cursor:'pointer'}}>⬜ ERASER</button>
-        <button onClick=${()=>{const ctx=canRef.current?.getContext('2d');const img=new Image();img.onload=()=>{ctx.drawImage(img,0,0);};img.src=imgSrc;}} style=${{background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:6,padding:'5px 14px',fontFamily:mono,fontSize:11,cursor:'pointer'}}>↺ RESET</button>
+      <div style=${{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+        <div style=${{display:'flex',gap:5}}>${COLS.map(c=>html`<div key=${c} onClick=${()=>{setClr(c);setTool('pen');}} style=${{width:22,height:22,borderRadius:'50%',background:c,cursor:'pointer',border:`2px solid ${clr===c&&tool==='pen'?'#fff':C.border}`}}/>`)}</div>
+        <div style=${{display:'flex',gap:5}}>${[2,4,8,14].map(s=>html`<div key=${s} onClick=${()=>setSz(s)} style=${{width:s+10,height:s+10,borderRadius:'50%',background:sz===s?C.accent:C.muted,cursor:'pointer',border:`2px solid ${sz===s?C.accent:C.border}`}}/>`)}</div>
+        <button onClick=${()=>setTool(t=>t==='eraser'?'pen':'eraser')} style=${{background:tool==='eraser'?C.abl:'transparent',color:tool==='eraser'?C.accent:C.muted,border:`1px solid ${tool==='eraser'?C.accent:C.border}`,borderRadius:6,padding:'4px 12px',fontFamily:mono,fontSize:11,cursor:'pointer'}}>⬜ ERASER</button>
       </div>
       <div style=${{overflow:'auto',flex:1,borderRadius:8,border:`1px solid ${C.border}`,background:'#000',display:'flex',justifyContent:'center',alignItems:'center'}}>
-        <canvas ref=${canRef}
-          style=${{maxWidth:'100%',maxHeight:'60vh',display:'block',cursor:'crosshair',touchAction:'none'}}
-          onMouseDown=${startDraw} onMouseMove=${doDraw} onMouseUp=${endDraw} onMouseLeave=${endDraw}
-          onTouchStart=${startDraw} onTouchMove=${doDraw} onTouchEnd=${endDraw}
-        />
+        <canvas ref=${cv} style=${{maxWidth:'100%',maxHeight:'56vh',cursor:'crosshair',touchAction:'none'}} onMouseDown=${sd} onMouseMove=${dd} onMouseUp=${ed} onMouseLeave=${ed} onTouchStart=${sd} onTouchMove=${dd} onTouchEnd=${ed}/>
       </div>
     </div>
   </div>`;
 }
 
-// ═══ TAB 1: OVERVIEW ═══
-// Change 5: collated report generator
-function genCollatedReport(data,subs,week,overallAvg,audited,top3,bot3,netAvg){
-  // All weeks that have any data (dynamic)
-  const allWks=[...new Set(Object.values(subs).flatMap(sd=>Object.keys(sd).map(Number)))].sort((a,b)=>a-b);
-  // Weekly perf table: rows=weeks, cols=DC names
-  const auditedDCs=SITES.filter(s=>Object.values(subs[s]||{}).length>0);
-  // Master Q comparison: rows=questions, cols=DCs for selected week
-  const weekDCs=SITES.filter(s=>!data[s]?.[week]?.empty);
-  const allQs=AREAS.flatMap(area=>QUESTIONS[area].map(q=>({area,q})));
-  const sc=(s)=>s>=80?'#10b981':s>=60?'#f59e0b':'#ef4444';
-  let html_='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Weekly Audit Collated Report — W'+String(week).padStart(2,'0')+'</title>';
-  html_+=`<style>body{font-family:Arial,sans-serif;font-size:12px;color:#111;background:#fff;margin:20px}
-    h1{font-size:22px;font-weight:bold;border-bottom:3px solid #f59e0b;padding-bottom:8px;margin-bottom:20px}
-    h2{font-size:16px;font-weight:bold;margin:24px 0 10px;background:#f0f0f0;padding:8px 12px;border-left:4px solid #f59e0b}
-    h3{font-size:13px;font-weight:bold;margin:16px 0 6px;color:#333}
-    table{border-collapse:collapse;width:100%;margin-bottom:16px;font-size:11px}
-    th{background:#1a1a2e;color:#fff;padding:7px 8px;text-align:center;font-size:10px}
-    td{border:1px solid #ddd;padding:6px 8px;text-align:center}
-    .pass{background:#d1fae5;color:#065f46;font-weight:bold}
-    .fail{background:#fee2e2;color:#991b1b;font-weight:bold}
-    .na{background:#f3f4f6;color:#6b7280}
-    .top{background:#d1fae5;color:#065f46;font-weight:bold;padding:6px 10px;border-radius:4px;display:inline-block;margin:2px}
-    .bot{background:#fee2e2;color:#991b1b;font-weight:bold;padding:6px 10px;border-radius:4px;display:inline-block;margin:2px}
-    .dc-section{border:1px solid #ddd;border-radius:6px;padding:14px;margin-bottom:16px;page-break-inside:avoid}
-    .score-big{font-size:32px;font-weight:bold}
-    .area-pill{display:inline-block;padding:3px 8px;border-radius:4px;margin:2px;font-size:10px;font-weight:bold}
-    @media print{h2{page-break-before:always}.dc-section{page-break-inside:avoid}}
-  </style></head><body>`;
-  html_+=`<h1>📋 WEEKLY AUDIT SCORECARD — Collated Report &nbsp; <span style="font-size:14px;color:#6b7280">Week ${String(week).padStart(2,'0')} &nbsp;·&nbsp; Generated ${new Date().toLocaleDateString('en-IN')}</span></h1>`;
-  // A: Overall Network Performance
-  html_+=`<h2>A. Overall Network Performance</h2>`;
-  html_+=`<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">`;
-  html_+=`<div style="background:#fffbeb;border:2px solid #f59e0b;border-radius:8px;padding:16px;text-align:center;min-width:140px"><div style="font-size:10px;color:#92400e;font-weight:bold;letter-spacing:1px">NETWORK AVERAGE</div><div class="score-big" style="color:${sc(overallAvg)}">${overallAvg}%</div><div style="font-size:10px;color:#666">${audited.length} of ${SITES.length} DCs audited</div></div>`;
-  netAvg.forEach(a=>{html_+=`<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;text-align:center;min-width:120px"><div style="font-size:9px;font-weight:bold;color:#374151">${a.area}</div><div style="font-size:24px;font-weight:bold;color:${a.color}">${a.avg}%</div><div style="font-size:9px;color:#6b7280">${a.count} DCs</div></div>`;});
-  html_+=`</div>`;
-  // B: Weekly Performance Table — DC names as ROWS, week numbers as COLUMNS
-  html_+=`<h2>B. Weekly Performance Table — DC Name (Rows) × Week Number (Columns)</h2>`;
-  if(allWks.length===0){html_+=`<p style="color:#999;font-style:italic">No data submitted yet.</p>`;}
-  else{
-    html_+=`<div style="overflow-x:auto"><table><thead><tr><th style="text-align:left;min-width:140px;background:#1a1a2e">DC NAME</th>`;
-    allWks.forEach(wk=>{html_+=`<th style="background:#1a1a2e;min-width:70px">W${String(wk).padStart(2,'0')}</th>`;});
-    html_+=`<th style="background:#1a1a2e;color:#f59e0b">AVG</th></tr></thead><tbody>`;
-    auditedDCs.forEach(s=>{
-      let sum=0,cnt=0;
-      allWks.forEach(wk=>{const v=!data[s]?.[wk]?.empty?data[s]?.[wk]?.score:null;if(v!==null){sum+=v;cnt++;}});
-      const avg=cnt>0?Math.round(sum/cnt):null;
-      html_+=`<tr><td style="font-weight:bold;text-align:left;background:#fffbeb;color:#92400e;white-space:nowrap">${s}</td>`;
-      allWks.forEach(wk=>{const sc2=data[s]?.[wk]?.score;const isEmpty=data[s]?.[wk]?.empty;html_+=isEmpty?`<td class="na">—</td>`:`<td class="${sc2>=80?'pass':sc2>=60?'':'fail'}" style="color:${sc(sc2||0)};font-weight:bold">${sc2||0}%</td>`;});
-      html_+=`<td style="font-weight:bold;color:${avg!==null?sc(avg):'#999'}">${avg!==null?avg+'%':'—'}</td>`;
-      html_+=`</tr>`;
-    });
-    html_+=`</tbody></table></div>`;
-  }
-  // C: Top & Bottom Performers
-  html_+=`<h2>C. Top & Bottom Performers — Week ${week}</h2>`;
-  html_+=`<div style="margin-bottom:12px"><strong style="color:#065f46">▲ TOP 3 PERFORMERS:</strong>&nbsp;`;
-  const medals=['🥇','🥈','🥉'];
-  top3.forEach((s,i)=>html_+=`<span class="top">${medals[i]} #${i+1} ${s.site} — ${s.score}%</span>`);
-  html_+=`</div><div><strong style="color:#991b1b">▼ BOTTOM 3 PERFORMERS:</strong>&nbsp;`;
-  bot3.forEach((s,i)=>html_+=`<span class="bot">#${i+1} ${s.site} — ${s.score}%</span>`);
-  html_+=`</div>`;
-  // D: Master Comparison Table
-  html_+=`<h2>D. Master Comparison Table — Questions vs DCs (Week ${week})</h2>`;
-  if(weekDCs.length===0){html_+=`<p style="color:#999;font-style:italic">No DCs submitted for this week.</p>`;}
-  else{
-    html_+=`<div style="overflow-x:auto"><table><thead><tr><th style="text-align:left;min-width:280px">QUESTION</th><th style="min-width:80px">AREA</th>`;
-    weekDCs.forEach(s=>{html_+=`<th style="min-width:90px">${s}</th>`;});
-    html_+=`</tr></thead><tbody>`;
-    allQs.forEach(({area,q},qi)=>{
-      html_+=`<tr style="background:${qi%2===0?'#fff':'#f9fafb'}"><td style="text-align:left;font-size:10px">${q}</td><td style="font-size:9px;color:#666">${area.split(' ')[0]}</td>`;
-      weekDCs.forEach(s=>{const ans=data[s]?.[week]?.answers?.[area]?.[q]?.answer||'—';html_+=`<td class="${ans==='PASS'?'pass':ans==='FAIL'?'fail':'na'}">${ans}</td>`;});
-      html_+=`</tr>`;
-    });
-    html_+=`</tbody></table></div>`;
-  }
-  // E: Per-DC Breakdown
-  html_+=`<h2>E. DC Performance Breakdown</h2>`;
-  weekDCs.forEach(site=>{
-    const rec=data[site]?.[week];if(!rec||rec.empty)return;
-    const fails=AREAS.flatMap(area=>QUESTIONS[area].filter(q=>rec.answers?.[area]?.[q]?.answer==='FAIL').map(q=>({
-      area,q,
-      remark:rec.answers[area][q].remark,
-      images:rec.answers[area][q].images||[],
-      videos:rec.answers[area][q].videos||[]
-    })));
-    html_+=`<div class="dc-section"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:10px">`;
-    html_+=`<div><strong style="font-size:16px">${site}</strong><br><span style="font-size:11px;color:#666">Auditor: ${rec.auditor} · ${rec.date}</span></div>`;
-    html_+=`<div class="score-big" style="color:${sc(rec.score)}">${rec.score}%</div></div>`;
-    html_+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">`;
-    AREAS.forEach(a=>{const asc=rec.areaScores[a]||0;html_+=`<div class="area-pill" style="background:${AREA_COLORS[a]}22;color:${AREA_COLORS[a]};border:1px solid ${AREA_COLORS[a]}44">${a.split(' ')[0]}: ${asc}%</div>`;});
-    html_+=`</div>`;
-    if(fails.length>0){
-      html_+=`<h3>Improvement Areas (${fails.length} failed)</h3>`;
-      fails.forEach(({area,q,remark,images,videos})=>{
-        const hasMedia=images.length>0||videos.length>0;
-        html_+=`<div style="background:#fff5f5;border:1px solid #fed7d7;border-radius:6px;padding:12px;margin-bottom:8px">`;
-        html_+=`<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">`;
-        // left: fail info
-        html_+=`<div style="flex:1;min-width:200px">`;
-        html_+=`<div style="display:flex;gap:8px;align-items:flex-start"><span style="color:#e53e3e;font-size:16px;flex-shrink:0">✗</span>`;
-        html_+=`<div><div style="font-size:12px;font-weight:bold;color:#e53e3e;line-height:1.4">${q}</div><div style="font-size:10px;color:#666;margin-top:3px">${area}</div>`;
-        if(remark)html_+=`<div style="font-size:10px;color:#d69e2e;font-style:italic;margin-top:4px">↳ ${remark}</div>`;
-        html_+=`</div></div></div>`;
-        // right: images + video note
-        if(hasMedia){
-          html_+=`<div style="flex-shrink:0;border-left:2px solid #fed7d7;padding-left:12px;min-width:100px">`;
-          if(images.length>0){
-            html_+=`<div style="font-size:9px;color:#991b1b;font-weight:bold;letter-spacing:1px;margin-bottom:6px;text-transform:uppercase">Snapshots (${images.length})</div>`;
-            html_+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:${videos.length>0?8:0}px">`;
-            images.forEach(img=>{
-              html_+=`<img src="${img}" style="width:90px;height:90px;object-fit:cover;border-radius:5px;border:2px solid #fed7d7;display:block"/>`;
-            });
-            html_+=`</div>`;
-          }
-          if(videos.length>0){
-            html_+=`<div style="font-size:9px;color:#1a6b8e;font-weight:bold;letter-spacing:1px;margin-bottom:4px;text-transform:uppercase">Videos (${videos.length})</div>`;
-            html_+=`<div style="font-size:10px;color:#555;font-style:italic">🎥 ${videos.length} video${videos.length!==1?'s':''} attached (view in dashboard)</div>`;
-          }
-          html_+=`</div>`;
-        }
-        html_+=`</div></div>`;
-      });
-    }else{html_+=`<div style="color:#065f46;font-weight:bold;padding:8px">✓ No failed items — Excellent performance</div>`;}
-    html_+=`</div>`;
-  });
-  html_+=`</body></html>`;
-  return html_;
+// ── Upload progress modal ──────────────────────────────
+function UploadModal({done,total,phase}){
+  const pct=total>0?Math.round(done/total*100):0;
+  return html`<div class="overlay">
+    <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:44,textAlign:'center',minWidth:300,maxWidth:400}}>
+      <div style=${{fontSize:48,marginBottom:16}}>☁</div>
+      <div style=${{color:C.accent,fontFamily:mono,fontSize:14,fontWeight:700,letterSpacing:1,marginBottom:8}}>
+        ${phase==='uploading'?'UPLOADING MEDIA TO CLOUD':'SAVING TO GOOGLE SHEETS…'}
+      </div>
+      ${phase==='uploading'?html`
+        <div style=${{color:C.muted,fontSize:12,marginBottom:16}}>${done} / ${total} file${total!==1?'s':''}</div>
+        <div style=${{background:C.border,borderRadius:4,height:10,marginBottom:10}}>
+          <div style=${{background:C.accent,width:`${pct}%`,height:'100%',borderRadius:4,transition:'width .3s'}}/>
+        </div>
+        <div style=${{color:C.accent,fontFamily:mono,fontSize:26,fontWeight:700}}>${pct}%</div>
+        <div style=${{color:C.muted,fontSize:11,marginTop:10,fontFamily:mono}}>Please keep this tab open…</div>
+      `:html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:8,color:C.muted,fontSize:13,marginTop:8}}>
+        <span class="spin">↻</span> Submitting to Google Sheets…
+      </div>`}
+    </div>
+  </div>`;
 }
 
-function OverviewTab({data,activeWeeks,subs}){
-  const latestWk=activeWeeks.length>0?activeWeeks[activeWeeks.length-1]:1;
-  const[week,setWeek]=useState(latestWk);
-  // FIX: depend on actual array content, not just length; auto-correct if stored week no longer exists
-  useEffect(()=>{
-    if(activeWeeks.length>0){
-      if(!activeWeeks.includes(week))setWeek(activeWeeks[activeWeeks.length-1]);
-    }
-  },[activeWeeks.join(',')]);
-  // Always use a valid week for data lookups — never leave it pointing at an empty slot
-  const displayWeek=activeWeeks.length>0?(activeWeeks.includes(week)?week:latestWk):week;
-  const[mode,setMode]=useState('list');
-  const scores=useMemo(()=>SITES.map(s=>({site:s,score:data[s]?.[displayWeek]?.score??0,aud:data[s]?.[displayWeek]?.auditor??'—',hasData:!data[s]?.[displayWeek]?.empty})).sort((a,b)=>b.score-a.score),[data,displayWeek]);
-  const audited=scores.filter(s=>s.hasData);
-  const hasAnyData=audited.length>0;
-  const top3=audited.slice(0,3);
-  const bot3=[...audited].sort((a,b)=>a.score-b.score).slice(0,3);
-  const netAvg=useMemo(()=>AREAS.map(area=>{
-    const ss=SITES.filter(s=>!data[s]?.[displayWeek]?.empty).map(s=>data[s]?.[displayWeek]?.areaScores?.[area]??0);
-    return{area,avg:ss.length>0?Math.round(ss.reduce((a,b)=>a+b,0)/ss.length):0,color:AREA_COLORS[area],count:ss.length};
-  }),[data,displayWeek]);
-  const overallAvg=hasAnyData?Math.round(audited.reduce((s,x)=>s+x.score,0)/audited.length):0;
-  const chartD={labels:audited.map(s=>s.site.length>12?s.site.slice(0,12)+'…':s.site),datasets:[{label:'Score %',data:audited.map(s=>s.score),backgroundColor:audited.map(s=>scoreColor(s.score)+'bb'),borderColor:audited.map(s=>scoreColor(s.score)),borderWidth:1}]};
-  const chartO={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:C.muted,font:{size:9},maxRotation:60,autoSkip:false},grid:{color:C.border+'44'}},y:{min:0,max:100,ticks:{color:C.muted},grid:{color:C.border+'44'}}}};
-
-  // Change 5: generate and download collated HTML report
-  const downloadReport=()=>{
-    const html_=genCollatedReport(data,subs,displayWeek,overallAvg,audited,top3,bot3,netAvg);
-    const blob=new Blob([html_],{type:'text/html'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download=`Audit_Collated_Report_W${String(displayWeek).padStart(2,'0')}_${new Date().toISOString().slice(0,10)}.html`;
-    a.click();URL.revokeObjectURL(a.href);
-  };
-  // Change 5: open in new window for print/PDF
-  const printReport=()=>{
-    const html_=genCollatedReport(data,subs,displayWeek,overallAvg,audited,top3,bot3,netAvg);
-    const w=window.open('','_blank');w.document.write(html_);w.document.close();setTimeout(()=>w.print(),600);
-  };
-
-  return html`<div class="fi">
-    <div style=${{display:'flex',gap:16,alignItems:'flex-end',marginBottom:24,flexWrap:'wrap'}}>
-      <div>
-        <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>WEEK NUMBER</div>
-        <select value=${displayWeek} onChange=${e=>setWeek(Number(e.target.value))} style=${{background:C.card,color:C.accent,border:`2px solid ${C.accent}44`,borderRadius:8,padding:'10px 20px',fontSize:22,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>
-          ${activeWeeks.length>0?activeWeeks.map(w=>html`<option key=${w} value=${w}>W${String(w).padStart(2,'0')}</option>`):html`<option value=${1}>W01</option>`}
-        </select>
-        ${activeWeeks.length===0?html`<div style=${{color:C.muted,fontSize:10,marginTop:6,fontFamily:mono,fontStyle:'italic'}}>Submit scorecards to populate</div>`:''}
-      </div>
-      <div style=${{background:'#161b22',border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 20px',textAlign:'center',minWidth:140}}>
-        <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1,marginBottom:4}}>DCs SUBMITTED</div>
-        <div style=${{fontFamily:mono,fontWeight:700,lineHeight:1}}>
-          <span style=${{fontSize:28,color:audited.length>0?C.pass:C.muted}}>${audited.length}</span>
-          <span style=${{fontSize:16,color:C.muted}}> / ${SITES.length}</span>
-        </div>
-        <div style=${{color:audited.length>0?C.pass:C.muted,fontSize:9,fontFamily:mono,marginTop:4}}>${audited.length===0?'AWAITING SUBMISSIONS':audited.length===SITES.length?'ALL DCs COMPLETE':'FORMS RECEIVED'}</div>
-      </div>
-      <div style=${{marginLeft:'auto',background:C.accentBg,border:`1px solid ${C.accent}44`,borderRadius:10,padding:'12px 22px',textAlign:'center'}}>
-        <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1}}>NETWORK AVG</div>
-        <div style=${{color:hasAnyData?C.accent:C.muted,fontSize:28,fontFamily:mono,fontWeight:700}}>${hasAnyData?overallAvg+'%':'—'}</div>
-        <div style=${{color:C.muted,fontSize:9,fontFamily:mono,marginTop:2}}>${audited.length} of ${SITES.length} DCs audited</div>
-      </div>
-      <div style=${{display:'flex',gap:8,alignSelf:'flex-end'}}>
-        ${['LIST VIEW','BAR CHART'].map(v=>{const act=(v==='LIST VIEW'&&mode==='list')||(v==='BAR CHART'&&mode==='chart');return html`<button key=${v} onClick=${()=>setMode(v==='LIST VIEW'?'list':'chart')} style=${{background:act?C.accentBg:'transparent',color:act?C.accent:C.muted,border:`1px solid ${act?C.accent:C.border}`,borderRadius:6,padding:'8px 14px',fontSize:11,fontFamily:mono,fontWeight:act?700:400,cursor:'pointer',letterSpacing:0.8}}>${v}</button>`;})}
-      </div>
+// ═══ LANDING (matching screenshot) ════════════════════
+function Landing({onFill,onView}){
+  return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24}}>
+    <div style=${{width:50,height:3,background:C.accent,borderRadius:2,marginBottom:48}}/>
+    <div style=${{textAlign:'center',marginBottom:60}}>
+      <div style=${{color:C.muted,fontFamily:mono,fontSize:10,letterSpacing:4,marginBottom:18}}>LOGISTICS OPERATIONS MANAGEMENT</div>
+      <h1 style=${{fontFamily:mono,fontSize:'clamp(28px,6vw,56px)',fontWeight:700,color:C.text,lineHeight:1.08,letterSpacing:-1,margin:0}}>
+        WEEKLY AUDIT<br/><span style=${{color:C.accent}}>SCORECARD</span>
+      </h1>
+      <p style=${{color:C.muted,fontSize:14,maxWidth:380,margin:'20px auto 0',lineHeight:1.6}}>
+        Track, measure and improve distribution center performance across all 23 sites
+      </p>
     </div>
-    <div style=${{marginBottom:20,display:'flex',gap:10,flexWrap:'wrap'}}>
-      <button onClick=${printReport} class="no-print" style=${{background:'#1e3a5f',color:'#60a5fa',border:`2px solid #3b82f6`,borderRadius:8,padding:'12px 22px',fontSize:13,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:0.8,transition:'all 0.15s'}} onMouseEnter=${e=>{e.target.style.background='#3b82f6';e.target.style.color='#fff';}} onMouseLeave=${e=>{e.target.style.background='#1e3a5f';e.target.style.color='#60a5fa';}}>🖨 PRINT / SAVE AS PDF</button>
-      <button onClick=${downloadReport} class="no-print" style=${{background:'#1a3a28',color:'#34d399',border:`2px solid #10b981`,borderRadius:8,padding:'12px 22px',fontSize:13,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:0.8,transition:'all 0.15s'}} onMouseEnter=${e=>{e.target.style.background='#10b981';e.target.style.color='#fff';}} onMouseLeave=${e=>{e.target.style.background='#1a3a28';e.target.style.color='#34d399';}}>⬇ DOWNLOAD COLLATED EMAIL REPORT</button>
+    <div style=${{display:'flex',gap:20,flexWrap:'wrap',justifyContent:'center'}}>
+      <button onClick=${onView}
+        style=${{background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:12,padding:'22px 44px',fontSize:18,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1,minWidth:240,transition:'all .2s'}}
+        onMouseEnter=${e=>{e.target.style.background=C.accent;e.target.style.color='#000';}}
+        onMouseLeave=${e=>{e.target.style.background=C.abl;e.target.style.color=C.accent;}}>
+        ▤ VIEW DASHBOARD
+      </button>
+      <button onClick=${onFill}
+        style=${{background:'transparent',color:C.text,border:`2px solid ${C.border}`,borderRadius:12,padding:'22px 44px',fontSize:18,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1,minWidth:240,transition:'all .2s'}}
+        onMouseEnter=${e=>{e.target.style.borderColor=C.text;}}
+        onMouseLeave=${e=>{e.target.style.borderColor=C.border;}}>
+        ✎ FILL SCORECARD
+      </button>
     </div>
-    ${!hasAnyData?html`<div style=${{...card({padding:40,textAlign:'center',marginBottom:20})}}>
-      <div style=${{fontSize:36,marginBottom:14,opacity:0.25}}>📋</div>
-      <div style=${{color:C.muted,fontFamily:mono,fontSize:13,fontWeight:600,letterSpacing:1,marginBottom:8}}>NO AUDIT DATA FOR WEEK ${String(displayWeek).padStart(2,'0')}</div>
-      <div style=${{color:C.muted,fontSize:12,lineHeight:1.8}}>No scorecards have been submitted for this week yet.<br/>Use <strong style=${{color:C.accent}}>FILL SCORECARD</strong> to begin submitting audit data.</div>
-    </div>`:html`
-    <div style=${{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)',gap:16,marginBottom:20}} class="grid-2">
-      ${[{label:'▲ TOP 3 PERFORMING',c:C.pass,d:top3},{label:'▼ BOTTOM 3 PERFORMING',c:C.fail,d:bot3}].map(({label,c,d})=>html`
-        <div style=${{...card({padding:16})}}>
-          <${SH} c=${c}>${label}</${SH}>
-          ${d.length===0?html`<div style=${{color:C.muted,fontFamily:mono,fontSize:11,textAlign:'center',padding:'20px 0'}}>No data yet</div>`:
-          d.map((s,i)=>html`<div key=${s.site} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:i<d.length-1?`1px solid ${C.border}`:'none'}}>
-            <div style=${{display:'flex',alignItems:'center',gap:10}}>
-              <span style=${{color:c,fontFamily:mono,fontSize:20,fontWeight:700,minWidth:28}}>#${i+1}</span>
-              <div><div style=${{color:C.text,fontSize:13,fontWeight:500}}>${s.site}</div><div style=${{color:C.muted,fontSize:10,marginTop:2}}>${s.aud}</div></div>
-            </div>
-            <${ScoreBadge} score=${s.score}/>
+    <div style=${{marginTop:60,display:'flex',gap:36,color:C.muted,fontSize:11,fontFamily:mono,flexWrap:'wrap',justifyContent:'center'}}>
+      ${['23 DISTRIBUTION CENTERS','59 AUDIT QUESTIONS','6 OPERATIONAL AREAS','REAL-TIME ANALYTICS'].map(x=>html`
+        <span key=${x} style=${{display:'flex',alignItems:'center',gap:8}}>
+          <span style=${{color:C.accent,fontSize:14}}>·</span>${x}
+        </span>`)}
+    </div>
+  </div>`;
+}
+
+// ═══ LOGIN ════════════════════════════════════════════
+function Login({onOk,onBack}){
+  const[id,setId]=useState('');const[pw,setPw]=useState('');const[err,setErr]=useState('');
+  const go=()=>{if(id===LOGIN_ID&&pw===LOGIN_PASS)onOk();else setErr('Invalid credentials.');};
+  return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+    <div style=${{width:'100%',maxWidth:400}} class="fi">
+      <div style=${{textAlign:'center',marginBottom:36}}>
+        <div style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:3,marginBottom:8}}>AUDITOR ACCESS</div>
+        <h1 style=${{color:C.text,fontFamily:mono,fontSize:24,fontWeight:700}}>FILL SCORECARD</h1>
+      </div>
+      <div style=${{...card({borderRadius:12,padding:32})}}>
+        ${[{l:'USER ID',v:id,s:setId,t:'text'},{l:'PASSWORD',v:pw,s:setPw,t:'password'}].map(f=>html`
+          <div key=${f.l} style=${{marginBottom:20}}>
+            <label style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,display:'block',marginBottom:8}}>${f.l}</label>
+            <input type=${f.t} value=${f.v}
+              onInput=${e=>{f.s(e.target.value);setErr('');}}
+              onKeyDown=${e=>e.key==='Enter'&&go()}
+              style=${{width:'100%',background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14}}/>
           </div>`)}
+        ${err?html`<div style=${{color:C.fail,fontSize:12,marginBottom:14,fontFamily:mono}}>✗ ${err}</div>`:''}
+        <div style=${{background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:12,marginBottom:16}}>
+          <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1}}>DEFAULT CREDENTIALS</div>
+          <div style=${{color:C.accent,fontFamily:mono,fontSize:11,marginTop:4}}>ID: ${LOGIN_ID} &nbsp;|&nbsp; PW: ${LOGIN_PASS}</div>
         </div>
-      `)}
-    </div>
-    `}
-    <div style=${{...card({padding:16,marginBottom:20})}}>
-      <${SH}>Network Average — Area Breakdown</${SH}>
-      ${hasAnyData?html`
-        <div style=${{display:'flex',gap:24,alignItems:'center',flexWrap:'wrap'}}>
-          <div style=${{position:'relative',width:200,height:200,flexShrink:0,margin:'0 auto'}}>
-            <${ChartComp} type="doughnut" data=${{
-              labels:netAvg.map(a=>a.area),
-              datasets:[{data:netAvg.map(a=>a.avg||1),backgroundColor:netAvg.map(a=>a.avg>0?a.color+'cc':'#30363d'),borderColor:netAvg.map(a=>a.avg>0?a.color:'#30363d'),borderWidth:2,hoverOffset:6}]
-            }} options=${{
-              responsive:true,maintainAspectRatio:true,cutout:'62%',
-              plugins:{
-                legend:{display:false},
-                tooltip:{callbacks:{label:(ctx)=>`${ctx.label.split(' ')[0]}: ${netAvg[ctx.dataIndex].avg}%`}},
-                datalabels:{
-                  display:(ctx)=>netAvg[ctx.dataIndex].avg>0,
-                  color:'#fff',
-                  font:{size:9,weight:'bold',family:'IBM Plex Mono,monospace'},
-                  formatter:(val,ctx)=>{const a=netAvg[ctx.dataIndex];return a.area.split(' ').slice(0,2).join('\n')+'\n'+a.avg+'%';},
-                  textAlign:'center',
-                  anchor:'center',
-                  align:'center',
-                  padding:2
-                }
-              }
-            }} style=${{width:'100%',height:'100%'}}/>
-            <div style=${{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
-              <div style=${{fontSize:22,fontFamily:mono,fontWeight:700,color:C.accent}}>${overallAvg}%</div>
-              <div style=${{fontSize:8,color:C.muted,fontFamily:mono,letterSpacing:1}}>OVERALL</div>
-            </div>
-          </div>
-          <div style=${{flex:1,minWidth:180}}>
-            ${netAvg.map(a=>html`<div key=${a.area} style=${{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
-              <div style=${{width:12,height:12,borderRadius:3,background:a.color,flexShrink:0}}/>
-              <div style=${{flex:1}}>
-                <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
-                  <span style=${{fontSize:11,color:C.text,fontWeight:500,fontFamily:mono}}>${a.area.split(' ').slice(0,2).join(' ')}</span>
-                  <span style=${{fontSize:13,color:a.color,fontFamily:mono,fontWeight:700,marginLeft:8}}>${a.avg}%</span>
-                </div>
-                <div style=${{background:C.border,borderRadius:3,height:4}}><div style=${{background:a.color,width:`${a.avg}%`,height:'100%',borderRadius:3,transition:'width 0.4s'}}/></div>
-                <div style=${{color:C.muted,fontSize:9,fontFamily:mono,marginTop:2}}>${a.count} DC${a.count!==1?'s':''}</div>
-              </div>
-            </div>`)}
-          </div>
-        </div>
-      `:html`
-        ${AREAS.map(a=>html`<${AreaBar} key=${a} label=${a} value=${0} color=${C.muted}/>`)}
-        <div style=${{color:C.muted,fontSize:11,textAlign:'center',marginTop:4,fontStyle:'italic'}}>Area breakdown populates after scorecard submissions</div>
-      `}
-    </div>
-    <div style=${{...card({padding:16})}}>
-      <${SH}>All Sites — Week ${displayWeek} Performance</${SH}>
-      ${!hasAnyData&&mode==='chart'?html`<div style=${{height:200,display:'flex',alignItems:'center',justifyContent:'center',color:C.muted,fontFamily:mono,fontSize:12,letterSpacing:1}}>NO DATA TO DISPLAY</div>`:
-      mode==='list'?html`<div>${scores.map((s,i)=>html`
-        <div key=${s.site} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:i<scores.length-1?`1px solid ${C.border}22`:'none',opacity:s.hasData?1:0.35}}>
-          <div><span style=${{color:s.hasData?C.text:C.muted,fontSize:13}}>${s.site}</span><span style=${{color:C.muted,fontSize:10,marginLeft:10}}>${s.hasData?s.aud:'Not yet audited'}</span></div>
-          <div style=${{display:'flex',alignItems:'center',gap:12}}><div style=${{width:100,background:C.border,borderRadius:3,height:5}}><div style=${{width:`${s.hasData?s.score:0}%`,height:'100%',background:s.hasData?scoreColor(s.score):C.border,borderRadius:3}}/></div>${s.hasData?html`<${ScoreBadge} score=${s.score}/>`:html`<span style=${{color:C.border,fontSize:11,fontFamily:mono,minWidth:42,textAlign:'right'}}>—</span>`}</div>
-        </div>`)}
-      </div>`:html`<div style=${{height:360}}><${ChartComp} type="bar" data=${chartD} options=${chartO} style=${{width:'100%',height:'100%'}}/></div>`}
+        <button onClick=${go} style=${{width:'100%',background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'14px 0',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1}}>LOGIN →</button>
+        <button onClick=${onBack} style=${{width:'100%',background:'transparent',color:C.muted,border:'none',padding:'12px 0',fontFamily:mono,fontSize:11,cursor:'pointer',marginTop:4}}>← BACK</button>
+      </div>
     </div>
   </div>`;
 }
 
-// ═══ TAB 2: DC DETAIL VIEW ═══
-function DCDetailTab({data,activeWeeks}){
-  const[site,setSite]=useState(SITES[0]);
-  const latestWk=activeWeeks.length>0?activeWeeks[activeWeeks.length-1]:1;
-  const[week,setWeek]=useState(latestWk);
-  // FIX: robust dependency + auto-correct invalid selection
-  useEffect(()=>{
-    if(activeWeeks.length>0){
-      if(!activeWeeks.includes(week))setWeek(activeWeeks[activeWeeks.length-1]);
-    }
-  },[activeWeeks.join(',')]);
-  const displayWeek=activeWeeks.length>0?(activeWeeks.includes(week)?week:latestWk):week;
-  const[view,setView]=useState(null);
-  const[lb,setLb]=useState(null); // {items:[...], idx:0}
-  const rec=data[site]?.[displayWeek];
-
-  // ── fails now includes videos ──
-  const fails=useMemo(()=>{
-    if(!rec)return[];
-    const r=[];
-    AREAS.forEach(area=>QUESTIONS[area].forEach(q=>{
-      const a=rec.answers?.[area]?.[q];
-      if(a?.answer==='FAIL')r.push({area,q,neg:toNeg(q),remark:a.remark,images:a.images||[],videos:a.videos||[]});
-    }));
-    return r;
-  },[rec]);
-
-  // ── all media grouped by area (images + videos) ──
-  const allMediaByArea=useMemo(()=>{
-    if(!rec)return{};
-    return Object.fromEntries(AREAS.map(area=>[area,areaMediaItems(rec,area)]));
-  },[rec]);
-
-  const perfD=rec?{labels:AREAS.map(a=>a.split(' ').slice(0,2).join(' ')),datasets:[{label:'Score %',data:AREAS.map(a=>rec.areaScores[a]||0),backgroundColor:AREAS.map(a=>AREA_COLORS[a]+'bb'),borderColor:AREAS.map(a=>AREA_COLORS[a]),borderWidth:1}]}:{labels:[],datasets:[]};
-  const perfO={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:false}},scales:{x:{ticks:{color:C.muted,font:{size:10}},grid:{color:C.border+'44'}},y:{min:0,max:100,ticks:{color:C.muted},grid:{color:C.border+'44'}}}};
-  const isEmpty=rec?.empty;
-
-  // ── mini media row for improvement areas ──
-  const MediaRow=({images,videos})=>{
-    const items=[...images.map(src=>({type:'image',src})),...videos.map(v=>({type:'video',url:v.url,name:v.name}))];
-    if(items.length===0)return null;
-    return html`<div style=${{flexShrink:0,borderLeft:`2px solid ${C.fail}33`,paddingLeft:14}}>
-      <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1,marginBottom:6,textTransform:'uppercase'}}>
-        Media (${items.length})
-      </div>
-      <div style=${{display:'flex',gap:6,flexWrap:'wrap',alignItems:'flex-start',maxWidth:300}}>
-        ${items.map((it,j)=>html`<div key=${j}
-          onClick=${()=>setLb({items,idx:j})}
-          style=${{width:76,height:76,borderRadius:6,cursor:'pointer',border:`2px solid ${C.fail}55`,
-            overflow:'hidden',background:'#0a0d12',position:'relative',transition:'border-color 0.2s,transform 0.15s',flexShrink:0}}
-          onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.fail;e.currentTarget.style.transform='scale(1.05)';}}
-          onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.fail+'55';e.currentTarget.style.transform='scale(1)';}}>
-          ${it.type==='image'
-            ?html`<img src=${it.src} style=${{width:'100%',height:'100%',objectFit:'cover',display:'block',pointerEvents:'none'}}/>`
-            :html`<div style=${{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#0a2030',gap:4}}>
-              <span style=${{fontSize:24}}>🎥</span>
-              <span style=${{color:'#06b6d4',fontSize:8,fontFamily:mono,fontWeight:700}}>VIDEO</span>
-            </div>`}
-        </div>`)}
-      </div>
-    </div>`;
-  };
-
-  return html`<div class="fi">
-    ${lb?html`<${MediaLightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
-    <div style=${{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap',alignItems:'flex-end'}}>
-      <div>
-        <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>SELECT SITE</div>
-        <select value=${site} onChange=${e=>{setSite(e.target.value);setView(null);}} style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 16px',fontSize:14,fontFamily:mono,cursor:'pointer'}}>
-          ${SITES.map(s=>html`<option key=${s}>${s}</option>`)}
-        </select>
-      </div>
-      <div>
-        <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>WEEK</div>
-        <select value=${displayWeek} onChange=${e=>setWeek(Number(e.target.value))} style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 16px',fontSize:14,fontFamily:mono,cursor:'pointer'}}>
-          ${activeWeeks.length>0?activeWeeks.map(w=>html`<option key=${w} value=${w}>Week ${w}</option>`):html`<option value=${1}>Week 1</option>`}
-        </select>
-      </div>
-    </div>
-    ${isEmpty?html`<div style=${{...card({padding:36,textAlign:'center',marginBottom:20})}}>
-      <div style=${{fontSize:32,opacity:0.2,marginBottom:12}}>📋</div>
-      <div style=${{color:C.muted,fontFamily:mono,fontSize:12,fontWeight:600,letterSpacing:1,marginBottom:6}}>NO AUDIT SUBMITTED</div>
-      <div style=${{color:C.muted,fontSize:12}}>${site} has no scorecard for Week ${displayWeek}. Submit one via <strong style=${{color:C.accent}}>FILL SCORECARD</strong>.</div>
-    </div>`:rec?html`
-      <div style=${{background:'linear-gradient(135deg,#161b22 0%,#1a2030 100%)',border:`1px solid ${C.border}`,borderRadius:12,padding:'20px 24px',marginBottom:20}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12}}>
-          <div>
-            <h2 style=${{fontFamily:mono,fontSize:24,fontWeight:700,color:C.text}}>${site}</h2>
-            <div style=${{color:C.muted,fontSize:12,marginTop:6}}>Auditor: <strong style=${{color:C.text}}>${rec.auditor}</strong> &nbsp;·&nbsp; Date: <strong style=${{color:C.text}}>${rec.date}</strong></div>
-          </div>
-          <div style=${{textAlign:'right'}}>
-            <div style=${{fontSize:42,fontFamily:mono,fontWeight:700,color:scoreColor(rec.score),lineHeight:1}}>${rec.score}%</div>
-            <div style=${{color:C.muted,fontSize:9,fontFamily:mono,marginTop:4}}>PERFORMANCE SCORE</div>
-          </div>
-        </div>
-        <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8,marginTop:16}}>
-          ${AREAS.map(a=>html`<div key=${a} style=${{background:AREA_COLORS[a]+'18',border:`1px solid ${AREA_COLORS[a]}44`,borderRadius:6,padding:8,textAlign:'center'}}>
-            <div style=${{fontSize:8,color:AREA_COLORS[a],fontFamily:mono,fontWeight:700,marginBottom:4,lineHeight:1.2}}>${a.split(' ').slice(0,2).join(' ')}</div>
-            <div style=${{fontSize:18,fontFamily:mono,fontWeight:700,color:AREA_COLORS[a]}}>${rec.areaScores[a]}%</div>
-          </div>`)}
-        </div>
-      </div>
-    `:''}
-    <div style=${{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
-      ${['PERFORMANCE','IMPROVEMENT AREAS','SNAP COLLATED','CHECKLIST'].map(v=>html`
-        <button key=${v} onClick=${()=>setView(view===v?null:v)} disabled=${!!isEmpty} style=${{background:view===v?C.accentBg:'transparent',color:view===v?C.accent:isEmpty?C.border:C.muted,border:`1px solid ${view===v?C.accent:C.border}`,borderRadius:6,padding:'10px 18px',fontSize:11,fontFamily:mono,fontWeight:view===v?700:400,cursor:isEmpty?'default':'pointer',letterSpacing:0.8,transition:'all 0.15s',opacity:isEmpty?0.3:1}}>${v}</button>
-      `)}
-    </div>
-    ${view==='PERFORMANCE'&&rec&&!isEmpty?html`
-      <div style=${{...card({padding:16,marginBottom:16})}} class="fi">
-        <${SH}>Area Performance — ${site}</${SH}>
-        <div style=${{height:280}}><${ChartComp} type="bar" data=${perfD} options=${perfO} style=${{width:'100%',height:'100%'}}/></div>
-        <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8,marginTop:16}}>
-          ${AREAS.map(a=>html`<div key=${a} style=${{background:AREA_COLORS[a]+'12',border:`1px solid ${AREA_COLORS[a]}33`,borderRadius:6,padding:12}}><div style=${{fontSize:9,color:AREA_COLORS[a],fontFamily:mono,fontWeight:700,marginBottom:6}}>${a}</div><div style=${{fontSize:22,fontFamily:mono,fontWeight:700,color:AREA_COLORS[a]}}>${rec.areaScores[a]}%</div></div>`)}
-        </div>
-      </div>
-    `:''}
-    ${view==='IMPROVEMENT AREAS'&&!isEmpty?html`
-      <div style=${{...card({padding:16})}} class="fi">
-        <${SH}>Improvement Areas — Failed Items</${SH}>
-        ${fails.length===0
-          ?html`<div style=${{color:C.pass,textAlign:'center',padding:40,fontFamily:mono}}>✓ NO FAILED ITEMS — EXCELLENT PERFORMANCE</div>`
-          :fails.map((item,i)=>html`
-            <div key=${i} style=${{background:C.fail+'08',border:`1px solid ${C.fail}33`,borderRadius:8,padding:'14px 16px',marginBottom:10}}>
-              <div style=${{display:'flex',gap:16,alignItems:'flex-start',flexWrap:'wrap'}}>
-                <div style=${{flex:'1 1 220px',minWidth:0}}>
-                  <div style=${{display:'flex',gap:10}}>
-                    <span style=${{color:C.fail,fontSize:18,flexShrink:0}}>✗</span>
-                    <div>
-                      <div style=${{color:C.fail,fontFamily:mono,fontSize:12,fontWeight:700,lineHeight:1.4}}>${item.neg}</div>
-                      <div style=${{color:C.muted,fontSize:10,marginTop:4,fontFamily:mono}}>${item.area}</div>
-                      ${item.remark?html`<div style=${{color:'#fbbf24',fontSize:11,marginTop:6,fontStyle:'italic'}}>↳ ${item.remark}</div>`:''}
-                    </div>
-                  </div>
-                </div>
-                <${MediaRow} images=${item.images} videos=${item.videos}/>
-              </div>
-            </div>`)}
-      </div>
-    `:''}
-    ${view==='SNAP COLLATED'&&!isEmpty?html`
-      <div style=${{...card({padding:16})}} class="fi">
-        <${SH}>Snap Collated — Media by Area</${SH}>
-        ${AREAS.map(area=>{
-          const items=allMediaByArea[area]||[];
-          const imgItems=items.filter(x=>x.type==='image');
-          const vidItems=items.filter(x=>x.type==='video');
-          return html`<div key=${area} style=${{marginBottom:24}}>
-            <div style=${{color:AREA_COLORS[area],fontSize:11,fontFamily:mono,fontWeight:700,marginBottom:10,paddingBottom:8,borderBottom:`1px solid ${AREA_COLORS[area]}33`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span>${area}</span>
-              <span style=${{color:C.muted,fontSize:9}}>
-                ${imgItems.length>0?`${imgItems.length} photo${imgItems.length!==1?'s':''}`:''} ${vidItems.length>0?`${vidItems.length} video${vidItems.length!==1?'s':''}`:''} ${items.length===0?'no media':''}
-              </span>
-            </div>
-            ${items.length===0
-              ?html`<div style=${{color:C.muted,fontSize:11,fontStyle:'italic',padding:'8px 0'}}>No media captured for this area</div>`
-              :html`<div style=${{display:'flex',flexWrap:'wrap',gap:10}}>
-                ${items.map((it,j)=>html`<div key=${j}
-                  onClick=${()=>setLb({items,idx:j})}
-                  style=${{width:90,height:90,borderRadius:8,cursor:'pointer',border:`2px solid ${C.border}`,
-                    overflow:'hidden',background:'#0a0d12',position:'relative',transition:'border-color 0.2s,transform 0.15s',flexShrink:0}}
-                  onMouseEnter=${e=>{e.currentTarget.style.borderColor=AREA_COLORS[area];e.currentTarget.style.transform='scale(1.04)';}}
-                  onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform='scale(1)';}}>
-                  ${it.type==='image'
-                    ?html`<img src=${it.src} style=${{width:'100%',height:'100%',objectFit:'cover',display:'block',pointerEvents:'none'}}/>`
-                    :html`<div style=${{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#0a2030',gap:4}}>
-                      <span style=${{fontSize:28}}>🎥</span>
-                      <span style=${{color:'#06b6d4',fontSize:8,fontFamily:mono,fontWeight:700,textAlign:'center',padding:'0 4px',lineHeight:1.2}}>VIDEO</span>
-                    </div>`}
-                  <div style=${{position:'absolute',bottom:0,left:0,right:0,background:'rgba(0,0,0,0.5)',padding:'2px 4px',fontSize:8,color:'#fff',fontFamily:mono,textAlign:'center',letterSpacing:0.5}}>
-                    ${it.type==='image'?'📷':'🎥'} ${j+1}
-                  </div>
-                </div>`)}
-              </div>`}
-          </div>`;
-        })}
-        ${AREAS.every(area=>(allMediaByArea[area]||[]).length===0)?html`<div style=${{textAlign:'center',color:C.muted,padding:40,fontFamily:mono,fontSize:12}}>Media uploaded during Fill Scorecard appears here grouped by area.</div>`:''}
-      </div>
-    `:''}
-    ${view==='CHECKLIST'&&rec&&!isEmpty?html`
-      <div style=${{...card({padding:16})}} class="fi">
-        <${SH}>Full Checklist — ${site} — Week ${displayWeek}</${SH}>
-        ${AREAS.map(area=>html`<div key=${area} style=${{marginBottom:24}}>
-          <div style=${{color:AREA_COLORS[area],fontSize:11,fontFamily:mono,fontWeight:700,padding:'8px 0',marginBottom:8,borderBottom:`2px solid ${AREA_COLORS[area]}44`,letterSpacing:0.5}}>${area}</div>
-          ${QUESTIONS[area].map((q,qi)=>{
-            const ans=rec.answers?.[area]?.[q];const av=ans?.answer||'—';
-            const col=av==='PASS'?C.pass:av==='FAIL'?C.fail:av==='NA'?C.na:C.muted;
-            return html`<div key=${qi} style=${{display:'flex',gap:12,padding:'9px 0',borderBottom:`1px solid ${C.border}22`,background:av==='FAIL'?C.fail+'06':'transparent'}}>
-              <span style=${{color:col,fontFamily:mono,fontWeight:700,minWidth:42,fontSize:11,flexShrink:0}}>${av}</span>
-              <div style=${{flex:1}}>
-                <div style=${{color:av==='FAIL'?'#fca5a5':C.text,fontSize:12,lineHeight:1.4}}>${q}</div>
-                ${ans?.remark?html`<div style=${{color:'#fbbf24',fontSize:11,marginTop:3,fontStyle:'italic'}}>↳ ${ans.remark}</div>`:''}
-              </div>
-            </div>`;
-          })}
-        </div>`)}
-      </div>
-    `:''}
-  </div>`;
-}
-
-// ═══ TAB 3: WEEKLY PERFORMANCE ═══
-function WeeklyPerfTab({data,activeWeeks}){
-  const[site,setSite]=useState(SITES[0]);
-  const[netChartType,setNetChartType]=useState('line');
-  // Download CSV uses currently selected site
-  const downloadPerfReport=()=>{
-    const WKS_=activeWeeks.length>0?activeWeeks:Array.from({length:10},(_,i)=>i+1);
-    const rows=[['DC PERFORMANCE REPORT',''],['Site:',site],['Generated:',new Date().toLocaleDateString('en-IN')],['']];
-    rows.push(['WEEKLY OVERALL SCORES']);
-    rows.push(['Week',...WKS_.map(w=>`W${String(w).padStart(2,'0')}`),'Average']);
-    const overallRow=['Overall %'];
-    let sum=0,cnt=0;
-    WKS_.forEach(wk=>{const r=data[site]?.[wk];const v=r&&!r.empty?r.score:null;overallRow.push(v===null?'—':v+'%');if(v!==null){sum+=v;cnt++;}});
-    overallRow.push(cnt>0?Math.round(sum/cnt)+'%':'—');rows.push(overallRow);
-    rows.push(['']);
-    rows.push(['AREA-WISE WEEKLY SCORES']);
-    rows.push(['Area',...WKS_.map(w=>`W${String(w).padStart(2,'0')}`),'Average']);
-    AREAS.forEach(area=>{
-      const row=[area];let s2=0,c2=0;
-      WKS_.forEach(wk=>{const r=data[site]?.[wk];const v=r&&!r.empty?r.areaScores?.[area]??null:null;row.push(v===null?'—':v+'%');if(v!==null){s2+=v;c2++;}});
-      row.push(c2>0?Math.round(s2/c2)+'%':'—');rows.push(row);
-    });
-    rows.push(['']);
-    rows.push(['REPEATED FAILURES']);
-    const fails={};
-    WKS_.forEach(wk=>{const rec=data[site]?.[wk];if(!rec||rec.empty)return;AREAS.forEach(area=>QUESTIONS[area].forEach(q=>{if(rec.answers?.[area]?.[q]?.answer==='FAIL'){fails[q]=(fails[q]||0)+1;}}));});
-    const sorted=Object.entries(fails).sort((a,b)=>b[1]-a[1]);
-    if(sorted.length===0)rows.push(['No repeated failures']);
-    else{rows.push(['Question','Fail Count']);sorted.forEach(([q,cnt])=>rows.push([q,cnt]));}
-    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download=`DC_Performance_Report_${site.replace(/ /g,'_')}_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();URL.revokeObjectURL(a.href);
-  };
-
-  const WKS_LIST=activeWeeks.length>0?activeWeeks:Array.from({length:10},(_,i)=>i+1);
-
-  // ── Network average across ALL DCs per week (auto-updates as submissions arrive) ──
-  const netAvgPerWeek=useMemo(()=>WKS_LIST.map(wk=>{
-    const audited=SITES.filter(s=>!data[s]?.[wk]?.empty);
-    return audited.length>0?Math.round(audited.reduce((a,s)=>a+data[s][wk].score,0)/audited.length):null;
-  }),[data,WKS_LIST.join(',')]);
-
-  const netAvgChartD={
-    labels:WKS_LIST.map(w=>`W${String(w).padStart(2,'0')}`),
-    datasets:[{
-      label:'Network Avg %',
-      data:netAvgPerWeek,
-      borderColor:'#f59e0b',
-      backgroundColor:netChartType==='bar'?'#f59e0b99':'#f59e0b33',
-      borderWidth:2.5,
-      tension:0.35,
-      fill:netChartType==='line',
-      pointBackgroundColor:'#f59e0b',
-      pointRadius:5,
-      spanGaps:false
-    }]
-  };
-  const netAvgChartO={
-    responsive:true,maintainAspectRatio:false,
-    plugins:{
-      legend:{display:true,position:'top',labels:{color:C.muted,font:{size:11},boxWidth:14}},
-      datalabels:{
-        display:(ctx)=>netAvgPerWeek[ctx.dataIndex]!==null,
-        color:'#f59e0b',
-        font:{size:10,weight:'bold',family:'IBM Plex Mono,monospace'},
-        formatter:(v)=>v+'%',
-        anchor:'end',align:'end',offset:4
-      }
-    },
-    scales:{
-      x:{ticks:{color:C.muted,font:{size:11}},grid:{color:C.border+'44'}},
-      y:{min:0,max:100,ticks:{color:C.muted},grid:{color:C.border+'44'}}
-    }
-  };
-
-  // ── Per-DC trend (driven by the DC dropdown below the network chart) ──
-  const lineD=useMemo(()=>({
-    labels:WKS_LIST.map(w=>`W${String(w).padStart(2,'0')}`),
-    datasets:[
-      {label:'Overall %',data:WKS_LIST.map(wk=>{const r=data[site]?.[wk];return r&&!r.empty?r.score:null;}),borderColor:C.accent,backgroundColor:C.accent+'22',borderWidth:2.5,tension:0.35,fill:true,pointBackgroundColor:C.accent,pointRadius:4,spanGaps:false},
-      ...AREAS.map(area=>({label:area.split(' ')[0],data:WKS_LIST.map(wk=>{const r=data[site]?.[wk];return r&&!r.empty?r.areaScores?.[area]??null:null;}),borderColor:AREA_COLORS[area],backgroundColor:'transparent',borderWidth:1.5,tension:0.35,borderDash:[4,4],pointRadius:2,spanGaps:false}))
-    ]
-  }),[site,data,WKS_LIST.join(',')]);
-
-  const lineO={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:C.muted,font:{size:10},boxWidth:12,padding:10}},datalabels:{display:false}},scales:{x:{ticks:{color:C.muted,font:{size:11}},grid:{color:C.border+'44'}},y:{min:0,max:100,ticks:{color:C.muted},grid:{color:C.border+'44'}}}};
-
-  const tableD=AREAS.map(area=>{const wkVals=WKS_LIST.map(wk=>{const r=data[site]?.[wk];return r&&!r.empty?r.areaScores?.[area]??0:null;});const valid=wkVals.filter(v=>v!==null);return{area,weeks:wkVals,avg:valid.length>0?Math.round(valid.reduce((a,b)=>a+b,0)/valid.length):0};});
-  const allFails=useMemo(()=>{const f={};WKS_LIST.forEach(wk=>{const rec=data[site]?.[wk];if(!rec||rec.empty)return;AREAS.forEach(area=>QUESTIONS[area].forEach(q=>{if(rec.answers?.[area]?.[q]?.answer==='FAIL'){f[q]=(f[q]||0)+1;}}));});return Object.entries(f).sort((a,b)=>b[1]-a[1]).slice(0,5);},[site,data,WKS_LIST.join(',')]);
-  const hasAnySiteData=WKS_LIST.some(wk=>!data[site]?.[wk]?.empty);
-
-  return html`<div class="fi">
-    ${/* ── Top bar: download / print only ── */null}
-    <div style=${{display:'flex',justifyContent:'flex-end',marginBottom:20,flexWrap:'wrap',gap:10}}>
-      <button class="no-print" onClick=${downloadPerfReport} style=${{background:'#1a3a28',color:'#34d399',border:`2px solid #10b981`,borderRadius:8,padding:'12px 22px',fontSize:13,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:0.8,transition:'all 0.15s'}} onMouseEnter=${e=>{e.target.style.background='#10b981';e.target.style.color='#fff';}} onMouseLeave=${e=>{e.target.style.background='#1a3a28';e.target.style.color='#34d399';}}>⬇ DOWNLOAD REPORT (.CSV)</button>
-      <button class="no-print" onClick=${()=>window.print()} style=${{background:C.accentBg,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'12px 22px',fontSize:13,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:0.8,transition:'all 0.15s'}} onMouseEnter=${e=>{e.target.style.background=C.accent;e.target.style.color='#000';}} onMouseLeave=${e=>{e.target.style.background=C.accentBg;e.target.style.color=C.accent;}}>🖨 PRINT PDF</button>
-    </div>
-
-    ${/* ── Card 1: Week-by-Week Network Average (auto-updates with new submissions) ── */null}
-    <div style=${{...card({padding:16,marginBottom:20})}}>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
-        <div>
-          <${SH} c=${C.accent}>Week-by-Week Overall Network Average</${SH}>
-          <div style=${{color:C.muted,fontSize:10,fontFamily:mono,marginTop:-8,marginBottom:8,letterSpacing:0.5}}>Aggregates all DCs · auto-updates as new scorecards are submitted</div>
-        </div>
-        <div style=${{display:'flex',gap:8}}>
-          ${['line','bar'].map(t=>html`<button key=${t} onClick=${()=>setNetChartType(t)} style=${{background:netChartType===t?C.accentBg:'transparent',color:netChartType===t?C.accent:C.muted,border:`1px solid ${netChartType===t?C.accent:C.border}`,borderRadius:6,padding:'7px 16px',fontSize:11,fontFamily:mono,fontWeight:netChartType===t?700:400,cursor:'pointer',letterSpacing:0.5,transition:'all 0.15s'}}>${t==='line'?'📈 Line':'📊 Bar'}</button>`)}
-        </div>
-      </div>
-      ${netAvgPerWeek.every(v=>v===null)
-        ?html`<div style=${{height:100,display:'flex',alignItems:'center',justifyContent:'center',color:C.muted,fontFamily:mono,fontSize:12,letterSpacing:0.8}}>No network data yet — submit scorecards to populate</div>`
-        :html`<div style=${{height:260}}><${ChartComp} type=${netChartType} data=${netAvgChartD} options=${netAvgChartO} style=${{width:'100%',height:'100%'}}/></div>`}
-
-      ${/* ── DC Dropdown + DC-specific trend chart (lives inside the same card, below network avg) ── */null}
-      <div style=${{marginTop:24,paddingTop:20,borderTop:`1px solid ${C.border}`}}>
-        <div style=${{display:'flex',alignItems:'center',gap:16,marginBottom:16,flexWrap:'wrap'}}>
-          <div>
-            <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>SELECT DC TO VIEW TREND</div>
-            <select value=${site} onChange=${e=>setSite(e.target.value)} style=${{background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 16px',fontSize:13,fontFamily:mono,cursor:'pointer'}}>
-              ${SITES.map(s=>html`<option key=${s}>${s}</option>`)}
-            </select>
-          </div>
-          <div style=${{background:C.accentBg,border:`1px solid ${C.accent}33`,borderRadius:8,padding:'8px 18px',marginTop:20}}>
-            <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1}}>DC SELECTED</div>
-            <div style=${{color:C.accent,fontFamily:mono,fontWeight:700,fontSize:14}}>${site}</div>
-          </div>
-        </div>
-        <div style=${{color:C.muted,fontSize:11,fontFamily:mono,fontWeight:600,marginBottom:10,letterSpacing:0.5}}>Weekly Performance Trend — ${site}</div>
-        ${!hasAnySiteData
-          ?html`<div style=${{height:120,display:'flex',alignItems:'center',justifyContent:'center',color:C.muted,fontFamily:mono,fontSize:12,letterSpacing:0.8}}>No audit data yet for ${site} — submit scorecards to populate chart</div>`
-          :html`<div style=${{height:280}}><${ChartComp} type="line" data=${lineD} options=${lineO} style=${{width:'100%',height:'100%'}}/></div>`}
-      </div>
-    </div>
-
-    ${/* ── Card 2: Section-wise Weekly Scores ── */null}
-    <div style=${{...card({padding:16,marginBottom:20,overflowX:'auto'})}}>
-      <${SH}>Section-wise Weekly Scores — ${site} (${WKS_LIST.length>0?`W${WKS_LIST[0]}–W${WKS_LIST[WKS_LIST.length-1]}`:'No data'})</${SH}>
-      <table style=${{width:'100%',borderCollapse:'collapse',fontSize:11,fontFamily:mono,tableLayout:'fixed'}}>
-        <thead><tr style=${{borderBottom:`1px solid ${C.border}`}}>
-          <th style=${{textAlign:'left',color:C.muted,padding:'6px 8px',fontWeight:600,width:'22%'}}>AREA</th>
-          ${WKS_LIST.map(w=>html`<th key=${w} style=${{color:C.muted,padding:'6px 4px',textAlign:'center'}}>W${String(w).padStart(2,'0')}</th>`)}
-          <th style=${{color:C.accent,padding:'6px 8px',textAlign:'center',width:'7%'}}>AVG</th>
-        </tr></thead>
-        <tbody>${tableD.map(row=>html`<tr key=${row.area} style=${{borderBottom:`1px solid ${C.border}22`}}>
-          <td style=${{color:AREA_COLORS[row.area],padding:8,fontSize:9,lineHeight:1.3}}>${row.area}</td>
-          ${row.weeks.map((s,j)=>html`<td key=${j} style=${{textAlign:'center',padding:'8px 4px',color:s===null?C.border:scoreColor(s),fontWeight:s!==null&&s<60?700:400}}>${s===null?'—':s+'%'}</td>`)}
-          <td style=${{textAlign:'center',color:row.avg===0&&!hasAnySiteData?C.border:C.accent,padding:8,fontWeight:700}}>${hasAnySiteData?row.avg+'%':'—'}</td>
-        </tr>`)}
-        </tbody>
-      </table>
-    </div>
-
-    ${/* ── Card 3: Top Repeated Failures ── */null}
-    <div style=${{...card({padding:16})}}>
-      <${SH}>Top Repeated Failures — ${site}</${SH}>
-      ${allFails.length===0?html`<div style=${{color:C.muted,textAlign:'center',padding:24,fontFamily:mono,fontSize:11}}>${hasAnySiteData?'✓ No repeated failures detected':'No data yet — submit scorecards to see failure patterns'}</div>`:
-      allFails.map(([q,cnt])=>html`<div key=${q} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${C.border}22`}}>
-        <div><div style=${{color:C.fail,fontFamily:mono,fontSize:12}}>${toNeg(q)}</div><div style=${{color:C.muted,fontSize:10,marginTop:2}}>${q}</div></div>
-        <span style=${{background:C.fail+'22',color:C.fail,border:`1px solid ${C.fail}44`,borderRadius:4,padding:'3px 10px',fontFamily:mono,fontSize:12,fontWeight:700,flexShrink:0,marginLeft:12}}>${cnt}✗</span>
-      </div>`)}
-    </div>
-  </div>`;
-}
-
-// ═══ TAB 4: DC FACILITY ═══
-function DCFacilityTab({data,activeWeeks}){
-  const[sz,setSz]=useState('Large');
-  const latestWk=activeWeeks.length>0?activeWeeks[activeWeeks.length-1]:1;
-  const[week,setWeek]=useState(latestWk);
-  // FIX: robust dependency + auto-correct invalid selection
-  useEffect(()=>{
-    if(activeWeeks.length>0){
-      if(!activeWeeks.includes(week))setWeek(activeWeeks[activeWeeks.length-1]);
-    }
-  },[activeWeeks.join(',')]);
-  const displayWeek=activeWeeks.length>0?(activeWeeks.includes(week)?week:latestWk):week;
-  const[lb,setLb]=useState(null);
-  const sites=FACILITY_MAP[sz];
-  const siteD=useMemo(()=>sites.map(s=>({site:s,score:data[s]?.[displayWeek]?.score??0,date:data[s]?.[displayWeek]?.date??'—',aud:data[s]?.[displayWeek]?.auditor??'—',hasData:!data[s]?.[displayWeek]?.empty,areaScores:data[s]?.[displayWeek]?.areaScores??{},fails:data[s]?.[displayWeek]?.empty?[]:AREAS.flatMap(area=>(QUESTIONS[area]||[]).filter(q=>data[s]?.[displayWeek]?.answers?.[area]?.[q]?.answer==='FAIL').map(q=>({area,q,neg:toNeg(q),remark:data[s]?.[displayWeek]?.answers?.[area]?.[q]?.remark||''}))),images:data[s]?.[displayWeek]?.empty?[]:AREAS.flatMap(area=>QUESTIONS[area].flatMap(q=>data[s]?.[displayWeek]?.answers?.[area]?.[q]?.images||[]))})),[sites,displayWeek,data]);
-  const auditedSites=siteD.filter(s=>s.hasData);
-  const netAvg=auditedSites.length>0?Math.round(auditedSites.reduce((a,b)=>a+b.score,0)/auditedSites.length):0;
-  const areaAvgs=AREAS.map(area=>{const ss=auditedSites.map(s=>s.areaScores?.[area]??0);return{area,avg:ss.length>0?Math.round(ss.reduce((a,b)=>a+b,0)/ss.length):0,color:AREA_COLORS[area]};});
-  const barD={labels:auditedSites.map(s=>s.site.length>11?s.site.slice(0,11)+'…':s.site),datasets:[{label:'Score %',data:auditedSites.map(s=>s.score),backgroundColor:auditedSites.map(s=>scoreColor(s.score)+'bb'),borderColor:auditedSites.map(s=>scoreColor(s.score)),borderWidth:1}]};
-  const barO={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:C.muted,font:{size:9},maxRotation:45},grid:{color:C.border+'44'}},y:{min:0,max:100,ticks:{color:C.muted},grid:{color:C.border+'44'}}}};
-  const commonFails=useMemo(()=>{const f={};siteD.forEach(s=>s.fails.forEach(fi=>{if(!f[fi.neg])f[fi.neg]={neg:fi.neg,count:0,remarks:[]};f[fi.neg].count++;if(fi.remark)f[fi.neg].remarks.push(fi.remark);}));return Object.values(f).sort((a,b)=>b.count-a.count).slice(0,8);},[siteD]);
-  return html`<div class="fi">
-    ${lb?html`<${Lightbox} images=${lb.images} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
-    <div style=${{display:'flex',gap:16,alignItems:'flex-end',marginBottom:24,flexWrap:'wrap'}}>
-      <div>
-        <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>FACILITY SIZE</div>
-        <div style=${{display:'flex',gap:8}}>
-          ${['Large','Medium','Small'].map(s=>html`<button key=${s} onClick=${()=>setSz(s)} style=${{background:sz===s?C.accentBg:'transparent',color:sz===s?C.accent:C.muted,border:`1px solid ${sz===s?C.accent:C.border}`,borderRadius:6,padding:'9px 20px',fontSize:11,fontFamily:mono,fontWeight:sz===s?700:400,cursor:'pointer',letterSpacing:0.8}}>${s.toUpperCase()}</button>`)}
-        </div>
-      </div>
-      <div>
-        <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>WEEK</div>
-        <select value=${displayWeek} onChange=${e=>setWeek(Number(e.target.value))} style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 16px',fontSize:14,fontFamily:mono,cursor:'pointer'}}>
-          ${activeWeeks.length>0?activeWeeks.map(w=>html`<option key=${w} value=${w}>Week ${w}</option>`):html`<option value=${1}>Week 1</option>`}
-        </select>
-      </div>
-      <div style=${{marginLeft:'auto',background:C.accentBg,border:`1px solid ${C.accent}44`,borderRadius:10,padding:'12px 22px',textAlign:'center'}}>
-        <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1}}>${sz.toUpperCase()} SEGMENT AVG</div>
-        <div style=${{color:auditedSites.length>0?C.accent:C.muted,fontSize:28,fontFamily:mono,fontWeight:700}}>${auditedSites.length>0?netAvg+'%':'—'}</div>
-        <div style=${{color:C.muted,fontSize:10}}>${auditedSites.length} of ${sites.length} audited</div>
-      </div>
-    </div>
-    <div style=${{...card({padding:16,marginBottom:20})}}>
-      <${SH}>${sz} DCs — Week ${displayWeek} Comparison</${SH}>
-      ${auditedSites.length===0?html`<div style=${{height:100,display:'flex',alignItems:'center',justifyContent:'center',color:C.muted,fontFamily:mono,fontSize:11,letterSpacing:0.8}}>NO AUDIT DATA FOR THIS WEEK</div>`:
-      html`<div style=${{height:240}}><${ChartComp} type="bar" data=${barD} options=${barO} style=${{width:'100%',height:'100%'}}/></div>`}
-    </div>
-    <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:12,marginBottom:20}}>
-      ${siteD.map(row=>html`<div key=${row.site} style=${{background:C.card,border:`1px solid ${row.hasData?scoreColor(row.score)+'33':C.border}`,borderRadius:10,padding:16,opacity:row.hasData?1:0.4}}>
-        <div style=${{fontFamily:mono,fontSize:12,fontWeight:700,color:C.text,marginBottom:6}}>${row.site}</div>
-        <div style=${{fontSize:30,fontFamily:mono,fontWeight:700,color:row.hasData?scoreColor(row.score):C.muted,marginBottom:8,lineHeight:1}}>${row.hasData?row.score+'%':'—'}</div>
-        <div style=${{fontSize:11,color:C.muted,lineHeight:1.8}}><div>${row.hasData?row.date:'—'}</div><div>${row.hasData?row.aud:'Not audited'}</div></div>
-      </div>`)}
-    </div>
-    ${!auditedSites.length?html`<div style=${{...card({padding:30,textAlign:'center',marginBottom:20})}}>
-      <div style=${{color:C.muted,fontFamily:mono,fontSize:12,marginBottom:6,letterSpacing:0.8}}>NO AUDITS SUBMITTED FOR ${sz.toUpperCase()} FACILITIES IN WEEK ${displayWeek}</div>
-      <div style=${{color:C.muted,fontSize:11}}>Submit scorecards via Fill Scorecard to see area analysis.</div>
-    </div>`:html`
-    <div style=${{...card({padding:16,marginBottom:20})}}>
-      <${SH}>${sz} Segment — Area Averages (${auditedSites.length} DC${auditedSites.length!==1?'s':''})</${SH}>
-      ${areaAvgs.map(a=>html`<${AreaBar} key=${a.area} label=${a.area} value=${a.avg} color=${a.color}/>`)}
-    </div>
-    <div style=${{...card({padding:16,marginBottom:20})}}>
-      <${SH}>Common Improvement Areas — ${sz} Segment</${SH}>
-      ${commonFails.length===0?html`<div style=${{color:C.pass,textAlign:'center',padding:20,fontFamily:mono}}>✓ No common failures this week</div>`:
-      commonFails.map((item,i)=>html`<div key=${i} style=${{display:'flex',gap:12,padding:'10px 0',borderBottom:`1px solid ${C.border}22`,alignItems:'flex-start'}}>
-        <span style=${{color:C.fail,fontSize:16,flexShrink:0}}>✗</span>
-        <div style=${{flex:1}}>
-          <div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:600}}>${item.neg}</div>
-          <div style=${{color:C.muted,fontSize:10,marginTop:3}}>Affects ${item.count} of ${auditedSites.length} audited DCs</div>
-        </div>
-        <span style=${{background:C.fail+'22',color:C.fail,border:`1px solid ${C.fail}44`,borderRadius:4,padding:'2px 8px',fontFamily:mono,fontSize:12,fontWeight:700,flexShrink:0}}>${item.count}</span>
-      </div>`)}
-    </div>
-    <div style=${{...card({padding:16})}}>
-      <${SH}>Image Gallery — ${sz} DCs</${SH}>
-      ${siteD.filter(s=>s.images.length>0).map(s=>html`<div key=${s.site} style=${{marginBottom:16}}>
-        <div style=${{color:C.muted,fontSize:11,fontFamily:mono,marginBottom:8}}>${s.site}</div>
-        <div style=${{display:'flex',flexWrap:'wrap',gap:8}}>${s.images.map((img,j)=>html`<img key=${j} src=${img} onClick=${()=>setLb({images:s.images,idx:j})} style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.border}`}}/>`)}</div>
-      </div>`)}
-      ${siteD.every(s=>s.images.length===0)?html`<div style=${{color:C.muted,textAlign:'center',padding:40,fontFamily:mono,fontSize:12}}>No images yet. Captured during Fill Scorecard will appear here grouped by facility.</div>`:''}
-    </div>
-    `}
-  </div>`;
-}
-
-// ═══ DASHBOARD ═══
-function Dashboard({data,activeWeeks,subs,onLogout}){
-  const[tab,setTab]=useState(0);
-  const TABS=['OVERVIEW','DC DETAIL VIEW','WEEKLY PERFORMANCE','DC FACILITY'];
-  return html`<div style=${{minHeight:'100vh',background:C.bg}}>
-    <div style=${{background:C.card,borderBottom:`1px solid ${C.border}`,padding:'0 24px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
-      <div style=${{padding:'14px 0'}}>
-        <div style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:2.5,marginBottom:4}}>LOGISTICS OPERATIONS MANAGEMENT</div>
-        <div style=${{color:C.text,fontFamily:mono,fontSize:22,fontWeight:700,letterSpacing:0.5,textShadow:`0 0 30px ${C.accent}44`}}>WEEKLY AUDIT SCORECARD</div>
-      </div>
-      <div style=${{display:'flex',gap:16,alignItems:'center'}}>
-        <div style=${{color:C.muted,fontSize:10,fontFamily:mono}} class="desktop-only">${new Date().toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div>
-        <button onClick=${onLogout} class="no-print" style=${{background:C.fail+'22',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'10px 20px',fontFamily:mono,fontSize:13,fontWeight:700,cursor:'pointer',letterSpacing:0.8,transition:'all 0.15s'}} onMouseEnter=${e=>{e.target.style.background=C.fail;e.target.style.color='#fff';}} onMouseLeave=${e=>{e.target.style.background=C.fail+'22';e.target.style.color=C.fail;}}>⏻ LOGOUT</button>
-      </div>
-    </div>
-    <div style=${{background:C.card,borderBottom:`1px solid ${C.border}`,padding:'0 24px',display:'flex',overflowX:'auto'}} class="no-print">
-      ${TABS.map((t,i)=>html`<button key=${t} onClick=${()=>setTab(i)} style=${{background:'transparent',color:tab===i?C.accent:C.muted,border:'none',borderBottom:tab===i?`2px solid ${C.accent}`:'2px solid transparent',padding:'16px 24px',fontSize:13,fontFamily:mono,fontWeight:tab===i?700:500,cursor:'pointer',letterSpacing:0.8,whiteSpace:'nowrap',transition:'all 0.2s'}}>${t}</button>`)}
-    </div>
-    <div style=${{padding:24,maxWidth:1200,margin:'0 auto'}}>
-      ${tab===0?html`<${OverviewTab} data=${data} activeWeeks=${activeWeeks} subs=${subs}/>`:null}
-      ${tab===1?html`<${DCDetailTab} data=${data} activeWeeks=${activeWeeks}/>`:null}
-      ${tab===2?html`<${WeeklyPerfTab} data=${data} activeWeeks=${activeWeeks}/>`:null}
-      ${tab===3?html`<${DCFacilityTab} data=${data} activeWeeks=${activeWeeks}/>`:null}
-    </div>
-  </div>`;
-}
-
-// ═══ FILL SCORECARD ═══
-function FillScorecard({onLogout,onSubmit}){
-  const[step,setStep]=useState('info');
-  const[info,setInfo]=useState({site:SITES[0],date:new Date().toISOString().slice(0,10),week:getWeekNum(new Date()),auditor:''});
-  const[done,setDone]=useState([]);
-  const[area,setArea]=useState(null);
+// ═══ FILL SCORECARD ═══════════════════════════════════
+function FillScorecard({onBack}){
+  const[step,setStep]=useState('info'); // info|areas|questions|uploading|done|error
+  const[info,setInfo]=useState({site:SITES[0],date:new Date().toISOString().slice(0,10),week:weekNum(new Date()),auditor:''});
+  const[doneAr,setDoneAr]=useState([]);
+  const[curAr,setCurAr]=useState(null);
   const[ans,setAns]=useState({});
   const[qi,setQi]=useState(0);
-  const[cam,setCam]=useState(false);
-  const[stream,setStream]=useState(null);
-  const[vidRec,setVidRec]=useState(false);
-  const[vidStream,setVidStream]=useState(null);
-  const[mediaRec,setMediaRec]=useState(null);
-  const[annotate,setAnnotate]=useState(null); // {imgSrc,ar,q} — pending annotation
-  const vRef=useRef(null);const cRef=useRef(null);const fRef=useRef(null);const vfRef=useRef(null);const vvRef=useRef(null);
+  // camera state
+  const[cam,setCam]=useState(false);const[stream,setStream]=useState(null);
+  // video record state
+  const[vRec,setVRec]=useState(false);const[vStream,setVStream]=useState(null);const[mRec,setMRec]=useState(null);
+  // annotation
+  const[ann,setAnn]=useState(null);
+  // upload progress
+  const[upP,setUpP]=useState({done:0,total:0,phase:''});
+  const[errMsg,setErrMsg]=useState('');
 
-  const upd=(ar,q,f,v)=>setAns(p=>({...p,[ar]:{...(p[ar]||{}),[q]:{...(p[ar]?.[q]||{}),answer:p[ar]?.[q]?.answer||null,remark:p[ar]?.[q]?.remark||'',images:p[ar]?.[q]?.images||[],...(f==='answer'?{answer:v}:{}), ...(f==='remark'?{remark:v}:{}),...(f==='images'?{images:v}:{})}}})  );
+  const vRef=useRef(null),cRef=useRef(null),fRef=useRef(null),vfRef=useRef(null),vvRef=useRef(null);
 
-  // cleaner updater
-  const setField=(ar,q,field,val)=>setAns(prev=>{
-    const existing=prev[ar]?.[q]||{answer:null,remark:'',images:[],videos:[]};
-    return{...prev,[ar]:{...(prev[ar]||{}),[q]:{...existing,[field]:val}}};
-  });
-
+  const setFld=(ar,q,f,v)=>setAns(p=>({...p,[ar]:{...(p[ar]||{}),[q]:{...(p[ar]?.[q]||{answer:null,remark:'',images:[],videos:[]}),[f]:v}}}));
   const getA=(ar,q)=>ans[ar]?.[q]||{answer:null,remark:'',images:[],videos:[]};
 
-  const startCam=async()=>{
-    try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},100);}
-    catch{alert('Camera not available. Use file upload instead.');}
-  };
-  const capPhoto=(ar,q)=>{
-    const canvas=cRef.current,video=vRef.current;if(!canvas||!video)return;
-    canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||480;
-    canvas.getContext('2d').drawImage(video,0,0);
-    const img=canvas.toDataURL('image/png',1.0); // no compression, full quality
-    // stop cam first, then open annotation modal
-    if(stream)stream.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);
-    setAnnotate({imgSrc:img,ar,q}); // open annotator
-  };
+  // Camera
+  const startCam=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},80);}catch{alert('Camera unavailable — use file upload.');}};
+  const capPhoto=(ar,q)=>{const el=cRef.current,vd=vRef.current;if(!el||!vd)return;el.width=vd.videoWidth||640;el.height=vd.videoHeight||480;el.getContext('2d').drawImage(vd,0,0);const img=el.toDataURL();if(stream)stream.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);setAnn({src:img,ar,q});};
   const stopCam=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);};
 
-  // ── Video evidence for VOLUMETRIC HANDLING ──
-  const startVidRec=async(ar,q)=>{
+  // Video record
+  const startVid=async(ar,q)=>{
+    try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:true});setVStream(s);setVRec(true);setTimeout(()=>{if(vvRef.current)vvRef.current.srcObject=s;},80);
+    const chunks=[];const mr=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm'});
+    mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+    mr.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'});const url=URL.createObjectURL(blob);setFld(ar,q,'videos',[...getA(ar,q).videos,{url,blob,name:'REC_'+Date.now()+'.webm'}]);if(s)s.getTracks().forEach(t=>t.stop());setVStream(null);setVRec(false);setMRec(null);};
+    mr.start();setMRec({rec:mr});}catch{alert('Camera/mic unavailable.');}
+  };
+  const stopVid=()=>{if(mRec)mRec.rec.stop();};
+  const vidFile=(e,ar,q)=>{Array.from(e.target.files).forEach(f=>{const url=URL.createObjectURL(f);setFld(ar,q,'videos',[...getA(ar,q).videos,{url,file:f,name:f.name}]);});e.target.value='';};
+  const imgFile=(e,ar,q)=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>setFld(ar,q,'images',[...getA(ar,q).images,ev.target.result]);r.readAsDataURL(f);});e.target.value='';};
+
+  const submitArea=()=>{const nd=[...doneAr,curAr];setDoneAr(nd);setCurAr(null);setStep('areas');setQi(0);};
+
+  // ── Main submit ──────────────────────────────────────
+  const submitAll=async()=>{
+    let totalMedia=0;
+    Object.values(ans).forEach(aq=>Object.values(aq).forEach(a=>{totalMedia+=(a.images||[]).length+(a.videos||[]).length;}));
+
+    setUpP({done:0,total:totalMedia,phase:'uploading'});setStep('uploading');
+    let uploaded=0;
+    const processed={};
+
+    for(const ar of AREAS){
+      processed[ar]={};
+      for(const q of QS[ar]){
+        const a=ans[ar]?.[q]||{answer:'NA',remark:'',images:[],videos:[]};
+        const imgURLs=[],vidURLs=[];
+
+        for(const img of (a.images||[])){
+          try{const u=await uploadMedia(img,'image');if(u)imgURLs.push(u);}catch(e){console.warn('img upload:',e);}
+          uploaded++;setUpP({done:uploaded,total:totalMedia,phase:'uploading'});
+        }
+        for(const vid of (a.videos||[])){
+          try{const src=vid.blob||vid.file||vid.url;const u=await uploadMedia(src,'video');if(u)vidURLs.push(u);}catch(e){console.warn('vid upload:',e);}
+          uploaded++;setUpP({done:uploaded,total:totalMedia,phase:'uploading'});
+        }
+        processed[ar][q]={answer:a.answer||'NA',remark:a.remark||'',imageURLs:imgURLs,videoURLs:vidURLs};
+      }
+    }
+
+    // Calculate scores
+    let pass=0,tot=0;const areaScores={};
+    AREAS.forEach(ar=>{let ap=0,at=0;QS[ar].forEach(q=>{const a=processed[ar]?.[q];if(a?.answer&&a.answer!=='NA'){at++;tot++;if(a.answer==='PASS'){ap++;pass++;}}});areaScores[ar]=at>0?Math.round(ap/at*100):0;});
+    const score=tot>0?Math.round(pass/tot*100):0;
+
+    setUpP(p=>({...p,phase:'submitting'}));
     try{
-      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:true});
-      setVidStream(s);setVidRec(true);
-      setTimeout(()=>{if(vvRef.current)vvRef.current.srcObject=s;},100);
-      const chunks=[];
-      const mr=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm'});
-      mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
-      mr.onstop=()=>{
-        const blob=new Blob(chunks,{type:'video/webm'});
-        const url=URL.createObjectURL(blob);
-        setField(ar,q,'videos',[...(getA(ar,q).videos||[]),{url,name:'Video_'+Date.now()+'.webm',type:'video/webm'}]);
-        if(s)s.getTracks().forEach(t=>t.stop());setVidStream(null);setVidRec(false);setMediaRec(null);
-      };
-      mr.start();setMediaRec({rec:mr,ar,q});
-    }catch{alert('Camera/microphone not available. Use file upload instead.');}
-  };
-  const stopVidRec=()=>{if(mediaRec)mediaRec.rec.stop();};
-  const vidFileUp=(e,ar,q)=>{
-    Array.from(e.target.files).forEach(file=>{
-      const url=URL.createObjectURL(file);
-      setField(ar,q,'videos',[...(getA(ar,q).videos||[]),{url,name:file.name,type:file.type}]);
-    });
-    e.target.value='';
-  };
-  const fileUp=(e,ar,q)=>{
-    Array.from(e.target.files).forEach(file=>{const r=new FileReader();r.onload=ev=>setField(ar,q,'images',[...getA(ar,q).images,ev.target.result]);r.readAsDataURL(file);});
-    e.target.value='';
+      await postToSheet({site:info.site,week:parseInt(info.week),date:new Date(info.date).toLocaleDateString('en-IN'),auditor:info.auditor,score,areaScores,answers:processed});
+      setUpP({done:0,total:0,phase:''});setStep('done');
+    }catch(e){
+      setUpP({done:0,total:0,phase:''});setErrMsg(e.message||'Submission failed');setStep('error');
+    }
   };
 
-  const submitArea=()=>{
-    const newDone=[...done,area];setDone(newDone);setArea(null);setStep('areas');setQi(0);
-    if(newDone.length===AREAS.length)submitAll(newDone);
-  };
-  const submitAll=(doneFinal=done)=>{
-    const rec={answers:{},auditor:info.auditor,date:new Date(info.date).toLocaleDateString('en-IN'),score:0,areaScores:{}};
-    let pass=0,total=0;
-    AREAS.forEach(ar=>{rec.answers[ar]={};let ap=0,at=0;QUESTIONS[ar].forEach(q=>{const a=ans[ar]?.[q]||{answer:'NA',remark:'',images:[],videos:[]};rec.answers[ar][q]=a;if(a.answer!=='NA'){at++;total++;if(a.answer==='PASS'){ap++;pass++;}}});rec.areaScores[ar]=at>0?Math.round((ap/at)*100):0;});
-    rec.score=total>0?Math.round((pass/total)*100):0;
-    onSubmit(info.site,parseInt(info.week),rec);setStep('done');
-  };
+  const qs=curAr?QS[curAr]:[];const cq=qs[qi]||'';const ca=getA(curAr,cq);
+  const arOk=qs.length>0&&qs.every(q=>['PASS','FAIL','NA'].includes(getA(curAr,q).answer));
 
-  const qs=area?QUESTIONS[area]:[];const cq=qs[qi]||'';const ca=getA(area,cq);
-  const areaOk=qs.length>0&&qs.every(q=>['PASS','FAIL','NA'].includes(getA(area,q).answer));
-
+  // ── DONE ─────────────────────────────────────────────
   if(step==='done')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>
     <div style=${{textAlign:'center',padding:40}} class="fi">
-      <div style=${{fontSize:72,color:C.pass,marginBottom:20}}>✓</div>
-      <div style=${{color:C.pass,fontFamily:mono,fontSize:22,fontWeight:700,marginBottom:12}}>RESPONSE RECORDED</div>
-      <div style=${{color:C.muted,marginBottom:8,fontSize:14}}>Audit submitted for <strong style=${{color:C.text}}>${info.site}</strong></div>
-      <div style=${{color:C.muted,marginBottom:32,fontSize:13,fontFamily:mono}}>Week ${info.week} • ${info.auditor}</div>
-      <button onClick=${onLogout} style=${{background:C.accentBg,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'14px 32px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1}}>← BACK TO HOME</button>
+      <div style=${{fontSize:72,color:C.pass,marginBottom:16}}>✓</div>
+      <div style=${{color:C.pass,fontFamily:mono,fontSize:22,fontWeight:700,marginBottom:10}}>RESPONSE RECORDED</div>
+      <div style=${{color:C.muted,fontSize:14,marginBottom:6}}>Audit submitted for <b style=${{color:C.text}}>${info.site}</b></div>
+      <div style=${{color:C.muted,fontFamily:mono,fontSize:13,marginBottom:32}}>Week ${info.week} · ${info.auditor}</div>
+      ${!sheetOK()?html`<div style=${{background:'#1a1200',border:`1px solid #f59e0b44`,borderRadius:8,padding:12,marginBottom:14,color:'#d97706',fontSize:12,fontFamily:mono}}>⚠ Apps Script URL not set — data not sent to Sheets</div>`:''}
+      ${!cloudOK()?html`<div style=${{background:'#0a1a2a',border:`1px solid #3b82f644`,borderRadius:8,padding:12,marginBottom:14,color:'#60a5fa',fontSize:12,fontFamily:mono}}>ℹ Cloudinary not configured — media not uploaded to cloud</div>`:''}
+      <button onClick=${onBack} style=${{background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'14px 32px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1}}>← BACK TO HOME</button>
     </div>
   </div>`;
 
-  if(step==='questions'&&area)return html`<div style=${{minHeight:'100vh',background:C.bg}}>
-    ${annotate?html`<${AnnotationModal}
-      imgSrc=${annotate.imgSrc}
-      onSave=${(annotated)=>{
-        setField(annotate.ar,annotate.q,'images',[...getA(annotate.ar,annotate.q).images,annotated]);
-        setAnnotate(null);
-      }}
-      onDiscard=${()=>setAnnotate(null)}
-    />`:''}
-    ${cam?html`<div class="modal-overlay">
-      <div style=${{textAlign:'center',width:'100%',maxWidth:480}}>
-        <video ref=${vRef} autoPlay playsinline style=${{width:'100%',borderRadius:8,display:'block'}}/>
-        <canvas ref=${cRef} style=${{display:'none'}}/>
-        <div style=${{display:'flex',gap:14,marginTop:16,justifyContent:'center'}}>
-          <button onClick=${()=>capPhoto(area,cq)} style=${{background:C.pass+'33',color:C.pass,border:`2px solid ${C.pass}`,borderRadius:8,padding:'16px 30px',fontSize:15,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>📸 CAPTURE</button>
-          <button onClick=${stopCam} style=${{background:C.fail+'33',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'16px 22px',fontFamily:mono,fontWeight:700,cursor:'pointer'}}>✕ CANCEL</button>
-        </div>
+  // ── ERROR ─────────────────────────────────────────────
+  if(step==='error')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>
+    <div style=${{textAlign:'center',padding:40,maxWidth:460}}>
+      <div style=${{fontSize:60,marginBottom:12}}>⚠</div>
+      <div style=${{color:C.fail,fontFamily:mono,fontSize:18,fontWeight:700,marginBottom:12}}>SUBMISSION FAILED</div>
+      <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,color:C.muted,fontSize:12,marginBottom:22,wordBreak:'break-all'}}>${errMsg}</div>
+      <div style=${{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+        <button onClick=${()=>setStep('areas')} style=${{background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 22px',fontFamily:mono,fontSize:13,cursor:'pointer'}}>← GO BACK</button>
+        <button onClick=${submitAll} style=${{background:C.fail+'22',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'12px 22px',fontFamily:mono,fontSize:13,fontWeight:700,cursor:'pointer'}}>↺ RETRY</button>
       </div>
-    </div>`:''}
-    ${vidRec?html`<div class="modal-overlay">
-      <div style=${{textAlign:'center',width:'100%',maxWidth:480}}>
-        <div style=${{background:C.fail+'22',border:`2px solid ${C.fail}`,borderRadius:6,padding:'6px 14px',display:'inline-flex',alignItems:'center',gap:8,marginBottom:10,fontFamily:mono,fontSize:12,color:C.fail}}>
-          <span style=${{width:10,height:10,borderRadius:'50%',background:C.fail,display:'inline-block',animation:'pulse 1s infinite'}}/>⏺ RECORDING…
-        </div>
-        <video ref=${vvRef} autoPlay playsinline muted style=${{width:'100%',borderRadius:8,display:'block'}}/>
-        <div style=${{display:'flex',gap:14,marginTop:16,justifyContent:'center'}}>
-          <button onClick=${stopVidRec} style=${{background:C.fail+'33',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'16px 30px',fontSize:15,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>⏹ STOP & SAVE</button>
-        </div>
-        <div style=${{color:C.muted,fontFamily:mono,fontSize:10,marginTop:10}}>Recording will be saved when you stop</div>
+    </div>
+  </div>`;
+
+  // ── UPLOADING ─────────────────────────────────────────
+  if(step==='uploading')return html`<${UploadModal} done=${upP.done} total=${upP.total} phase=${upP.phase}/>`;
+
+  // ── QUESTIONS ─────────────────────────────────────────
+  if(step==='questions'&&curAr)return html`<div style=${{minHeight:'100vh',background:C.bg}}>
+    ${ann?html`<${Annotate} src=${ann.src}
+      onSave=${s=>{setFld(ann.ar,ann.q,'images',[...getA(ann.ar,ann.q).images,s]);setAnn(null);}}
+      onDiscard=${()=>setAnn(null)}/>`:''}
+    ${cam?html`<div class="overlay"><div style=${{textAlign:'center',width:'100%',maxWidth:480}}>
+      <video ref=${vRef} autoPlay playsinline style=${{width:'100%',borderRadius:8}}/>
+      <canvas ref=${cRef} style=${{display:'none'}}/>
+      <div style=${{display:'flex',gap:14,marginTop:14,justifyContent:'center'}}>
+        <button onClick=${()=>capPhoto(curAr,cq)} style=${{background:C.pass+'33',color:C.pass,border:`2px solid ${C.pass}`,borderRadius:8,padding:'14px 28px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>📸 CAPTURE</button>
+        <button onClick=${stopCam} style=${{background:C.fail+'33',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'14px 20px',fontFamily:mono,fontWeight:700,cursor:'pointer'}}>✕</button>
       </div>
-    </div>`:''}
-    <style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}</style>
+    </div></div>`:''}
+    ${vRec?html`<div class="overlay"><div style=${{textAlign:'center',width:'100%',maxWidth:480}}>
+      <div style=${{display:'inline-flex',alignItems:'center',gap:8,background:C.fail+'22',border:`2px solid ${C.fail}`,borderRadius:6,padding:'6px 14px',marginBottom:10,fontFamily:mono,fontSize:12,color:C.fail}}>
+        <span class="blink" style=${{width:10,height:10,borderRadius:'50%',background:C.fail,display:'inline-block'}}/>⏺ RECORDING…
+      </div>
+      <video ref=${vvRef} autoPlay playsinline muted style=${{width:'100%',borderRadius:8}}/>
+      <div style=${{display:'flex',gap:14,marginTop:14,justifyContent:'center'}}>
+        <button onClick=${stopVid} style=${{background:C.fail+'33',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'14px 28px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>⏹ STOP & SAVE</button>
+      </div>
+    </div></div>`:''}
     <div style=${{maxWidth:600,margin:'0 auto',padding:16}}>
       <div style=${{...card({padding:14,marginBottom:14})}}>
         <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <div style=${{color:AREA_COLORS[area],fontFamily:mono,fontSize:11,fontWeight:700}}>${area}</div>
-          <button onClick=${()=>{setStep('areas');setQi(0);}} style=${{background:'transparent',color:C.muted,border:'none',fontFamily:mono,fontSize:10,cursor:'pointer',letterSpacing:0.8}}>← AREAS</button>
+          <span style=${{color:ACLR[curAr],fontFamily:mono,fontSize:11,fontWeight:700}}>${curAr}</span>
+          <button onClick=${()=>{setStep('areas');setQi(0);}} style=${{background:'transparent',color:C.muted,border:'none',fontFamily:mono,fontSize:10,cursor:'pointer'}}>← AREAS</button>
         </div>
-        <div style=${{color:C.muted,fontSize:11,marginBottom:8}}>${info.site} • Week ${info.week} • ${info.auditor}</div>
-        <${Bar} v=${((qi+1)/qs.length)*100} color=${AREA_COLORS[area]} h=${5}/>
+        <div style=${{color:C.muted,fontSize:11,marginBottom:8}}>${info.site} · Week ${info.week} · ${info.auditor}</div>
+        <${PBar} v=${((qi+1)/qs.length)*100} color=${ACLR[curAr]}/>
         <div style=${{color:C.muted,fontSize:10,marginTop:4,textAlign:'right',fontFamily:mono}}>Q${qi+1}/${qs.length}</div>
       </div>
       <div style=${{...card({padding:20,marginBottom:14})}} class="fi">
-        <div style=${{color:C.text,fontSize:15,fontWeight:500,lineHeight:1.6,marginBottom:22,minHeight:56}}>${cq}</div>
-        <div style=${{display:'flex',gap:10,marginBottom:18}}>
-          ${['PASS','FAIL','NA'].map(opt=>{const col=opt==='PASS'?C.pass:opt==='FAIL'?C.fail:C.na;const sel=ca.answer===opt;return html`<button key=${opt} onClick=${()=>setField(area,cq,'answer',opt)} style=${{flex:1,background:sel?col+'33':'transparent',color:col,border:`2px solid ${sel?col:col+'55'}`,borderRadius:6,padding:'15px 0',fontSize:13,fontFamily:mono,fontWeight:sel?700:400,cursor:'pointer',transition:'all 0.15s'}}>${opt==='PASS'?'✓ PASS':opt==='FAIL'?'✗ FAIL':'— NA'}</button>`;})}</div>
-        <textarea placeholder="Add remark (optional)..." value=${ca.remark||''} onInput=${e=>setField(area,cq,'remark',e.target.value)} style=${{width:'100%',background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:12,fontSize:13,resize:'vertical',minHeight:68,marginBottom:12}}/>
+        <div style=${{color:C.text,fontSize:15,fontWeight:500,lineHeight:1.6,marginBottom:20,minHeight:54}}>${cq}</div>
+        <div style=${{display:'flex',gap:10,marginBottom:16}}>
+          ${['PASS','FAIL','NA'].map(opt=>{const col=opt==='PASS'?C.pass:opt==='FAIL'?C.fail:C.na;const sel=ca.answer===opt;return html`<button key=${opt} onClick=${()=>setFld(curAr,cq,'answer',opt)} style=${{flex:1,background:sel?col+'33':'transparent',color:col,border:`2px solid ${sel?col:col+'55'}`,borderRadius:6,padding:'14px 0',fontSize:13,fontFamily:mono,fontWeight:sel?700:400,cursor:'pointer'}}>
+            ${opt==='PASS'?'✓ PASS':opt==='FAIL'?'✗ FAIL':'— NA'}
+          </button>`;})}</div>
+        <textarea placeholder="Add remark (optional)…" value=${ca.remark||''} onInput=${e=>setFld(curAr,cq,'remark',e.target.value)} style=${{width:'100%',background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:12,fontSize:13,resize:'vertical',minHeight:60,marginBottom:12}}/>
         <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button onClick=${startCam} style=${{background:C.blue+'22',color:C.blue,border:`1px solid ${C.blue}`,borderRadius:6,padding:'9px 16px',fontSize:11,fontFamily:mono,fontWeight:600,cursor:'pointer',letterSpacing:0.8}}>📷 CAMERA</button>
-          <button onClick=${()=>fRef.current?.click()} style=${{background:C.purple+'22',color:C.purple,border:`1px solid ${C.purple}`,borderRadius:6,padding:'9px 16px',fontSize:11,fontFamily:mono,fontWeight:600,cursor:'pointer',letterSpacing:0.8}}>📁 UPLOAD</button>
-          <input ref=${fRef} type="file" accept="image/*" multiple style=${{display:'none'}} onChange=${e=>fileUp(e,area,cq)}/>
-          <button onClick=${()=>startVidRec(area,cq)} style=${{background:'#06b6d422',color:'#06b6d4',border:`1px solid #06b6d4`,borderRadius:6,padding:'9px 16px',fontSize:11,fontFamily:mono,fontWeight:600,cursor:'pointer',letterSpacing:0.8}}>🎥 RECORD VIDEO</button>
-          <button onClick=${()=>vfRef.current?.click()} style=${{background:'#0891b222',color:'#0891b2',border:`1px solid #0891b2`,borderRadius:6,padding:'9px 16px',fontSize:11,fontFamily:mono,fontWeight:600,cursor:'pointer',letterSpacing:0.8}}>📹 UPLOAD VIDEO</button>
-          <input ref=${vfRef} type="file" accept="video/*" multiple style=${{display:'none'}} onChange=${e=>vidFileUp(e,area,cq)}/>
+          <button onClick=${startCam} style=${{background:C.blue+'22',color:C.blue,border:`1px solid ${C.blue}`,borderRadius:6,padding:'8px 12px',fontSize:11,fontFamily:mono,cursor:'pointer'}}>📷 CAMERA</button>
+          <button onClick=${()=>fRef.current?.click()} style=${{background:C.purple+'22',color:C.purple,border:`1px solid ${C.purple}`,borderRadius:6,padding:'8px 12px',fontSize:11,fontFamily:mono,cursor:'pointer'}}>📁 IMAGE</button>
+          <input ref=${fRef} type="file" accept="image/*" multiple style=${{display:'none'}} onChange=${e=>imgFile(e,curAr,cq)}/>
+          <button onClick=${()=>startVid(curAr,cq)} style=${{background:'#06b6d422',color:'#06b6d4',border:`1px solid #06b6d4`,borderRadius:6,padding:'8px 12px',fontSize:11,fontFamily:mono,cursor:'pointer'}}>🎥 RECORD</button>
+          <button onClick=${()=>vfRef.current?.click()} style=${{background:'#0891b222',color:'#0891b2',border:`1px solid #0891b2`,borderRadius:6,padding:'8px 12px',fontSize:11,fontFamily:mono,cursor:'pointer'}}>📹 VIDEO</button>
+          <input ref=${vfRef} type="file" accept="video/*" multiple style=${{display:'none'}} onChange=${e=>vidFile(e,curAr,cq)}/>
         </div>
         ${(ca.images||[]).length>0?html`<div style=${{display:'flex',flexWrap:'wrap',gap:8,marginTop:12}}>
           ${(ca.images||[]).map((img,j)=>html`<div key=${j} style=${{position:'relative'}}>
-            <img src=${img} style=${{width:70,height:70,objectFit:'cover',borderRadius:6,border:`2px solid ${C.border}`,display:'block'}}/>
-            <button onClick=${()=>setField(area,cq,'images',(ca.images||[]).filter((_,k)=>k!==j))} style=${{position:'absolute',top:-6,right:-6,background:C.fail,color:'#fff',border:'none',borderRadius:'50%',width:18,height:18,cursor:'pointer',fontSize:10,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+            <img src=${img} style=${{width:68,height:68,objectFit:'cover',borderRadius:6,border:`2px solid ${C.border}`}}/>
+            <button onClick=${()=>setFld(curAr,cq,'images',ca.images.filter((_,k)=>k!==j))} style=${{position:'absolute',top:-5,right:-5,background:C.fail,color:'#fff',border:'none',borderRadius:'50%',width:18,height:18,cursor:'pointer',fontSize:10,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
           </div>`)}
         </div>`:''}
-        ${(ca.videos||[]).length>0?html`
-          <div style=${{marginTop:14,borderTop:`1px solid #06b6d433`,paddingTop:10}}>
-            <div style=${{color:'#06b6d4',fontSize:10,fontFamily:mono,letterSpacing:1,marginBottom:8}}>VIDEO EVIDENCE (${(ca.videos||[]).length})</div>
-            <div style=${{display:'flex',flexWrap:'wrap',gap:10}}>
-              ${(ca.videos||[]).map((v,j)=>html`<div key=${j} style=${{position:'relative',background:C.bg,border:`2px solid #06b6d444`,borderRadius:8,overflow:'hidden'}}>
-                <video src=${v.url} controls style=${{width:160,height:100,display:'block',objectFit:'cover'}}/>
-                <div style=${{padding:'4px 8px',fontSize:9,color:C.muted,fontFamily:mono,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:160}}>${v.name}</div>
-                <button onClick=${()=>setField(area,cq,'videos',(ca.videos||[]).filter((_,k)=>k!==j))} style=${{position:'absolute',top:4,right:4,background:C.fail,color:'#fff',border:'none',borderRadius:'50%',width:20,height:20,cursor:'pointer',fontSize:11,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>✕</button>
-              </div>`)}
-            </div>
-          </div>
-        `:''}
+        ${(ca.videos||[]).length>0?html`<div style=${{display:'flex',flexWrap:'wrap',gap:8,marginTop:10}}>
+          ${(ca.videos||[]).map((v,j)=>html`<div key=${j} style=${{position:'relative',background:C.bg,border:`2px solid #06b6d444`,borderRadius:8,overflow:'hidden'}}>
+            <video src=${v.url} controls style=${{width:150,height:90,objectFit:'cover',display:'block'}}/>
+            <div style=${{padding:'3px 8px',fontSize:9,color:C.muted,fontFamily:mono,maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${v.name}</div>
+            <button onClick=${()=>setFld(curAr,cq,'videos',ca.videos.filter((_,k)=>k!==j))} style=${{position:'absolute',top:4,right:4,background:C.fail,color:'#fff',border:'none',borderRadius:'50%',width:20,height:20,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+          </div>`)}
+        </div>`:''}
       </div>
       <div style=${{display:'flex',gap:10}}>
-        <button onClick=${()=>setQi(i=>Math.max(0,i-1))} disabled=${qi===0} style=${{flex:1,background:'transparent',color:qi===0?C.muted+'66':C.muted,border:`1px solid ${C.border}`,borderRadius:6,padding:'14px 0',fontSize:11,fontFamily:mono,fontWeight:600,cursor:qi===0?'default':'pointer',letterSpacing:0.8,opacity:qi===0?0.3:1}}>← PREV</button>
-        ${qi<qs.length-1?html`<button onClick=${()=>setQi(i=>i+1)} disabled=${!ca.answer} style=${{flex:2,background:ca.answer?C.accentBg:'transparent',color:ca.answer?C.accent:C.muted,border:`2px solid ${ca.answer?C.accent:C.border}`,borderRadius:6,padding:'14px 0',fontSize:12,fontFamily:mono,fontWeight:700,cursor:ca.answer?'pointer':'default',letterSpacing:0.8,opacity:ca.answer?1:0.4}}>NEXT QUESTION →</button>`:
-        html`<button onClick=${submitArea} disabled=${!areaOk} style=${{flex:2,background:areaOk?C.pass+'22':'transparent',color:areaOk?C.pass:C.muted,border:`2px solid ${areaOk?C.pass:C.border}`,borderRadius:6,padding:'14px 0',fontSize:12,fontFamily:mono,fontWeight:700,cursor:areaOk?'pointer':'default',letterSpacing:0.8,opacity:areaOk?1:0.4}}>✓ SUBMIT AREA</button>`}
+        <button onClick=${()=>setQi(i=>Math.max(0,i-1))} disabled=${qi===0} style=${{flex:1,background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:6,padding:'13px 0',fontFamily:mono,fontSize:11,cursor:qi===0?'default':'pointer',opacity:qi===0?.3:1}}>← PREV</button>
+        ${qi<qs.length-1
+          ?html`<button onClick=${()=>setQi(i=>i+1)} disabled=${!ca.answer} style=${{flex:2,background:ca.answer?C.abl:'transparent',color:ca.answer?C.accent:C.muted,border:`2px solid ${ca.answer?C.accent:C.border}`,borderRadius:6,padding:'13px 0',fontSize:12,fontFamily:mono,fontWeight:700,cursor:ca.answer?'pointer':'default',opacity:ca.answer?1:.4}}>NEXT QUESTION →</button>`
+          :html`<button onClick=${submitArea} disabled=${!arOk} style=${{flex:2,background:arOk?C.pass+'22':'transparent',color:arOk?C.pass:C.muted,border:`2px solid ${arOk?C.pass:C.border}`,borderRadius:6,padding:'13px 0',fontSize:12,fontFamily:mono,fontWeight:700,cursor:arOk?'pointer':'default',opacity:arOk?1:.4}}>✓ SUBMIT AREA</button>`}
       </div>
     </div>
   </div>`;
 
+  // ── AREA SELECTION ────────────────────────────────────
   if(step==='areas')return html`<div style=${{minHeight:'100vh',background:C.bg}}>
     <div style=${{maxWidth:600,margin:'0 auto',padding:16}}>
       <div style=${{...card({padding:16,marginBottom:20})}}>
         <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div><div style=${{fontFamily:mono,fontSize:16,fontWeight:700,color:C.text}}>${info.site}</div><div style=${{color:C.muted,fontSize:12,marginTop:4}}>Week ${info.week} • ${info.auditor}</div></div>
-          <button onClick=${onLogout} style=${{background:'transparent',color:C.muted,border:'none',fontFamily:mono,fontSize:10,cursor:'pointer',letterSpacing:0.8}}>LOGOUT</button>
+          <div>
+            <div style=${{fontFamily:mono,fontSize:16,fontWeight:700,color:C.text}}>${info.site}</div>
+            <div style=${{color:C.muted,fontSize:12,marginTop:4}}>Week ${info.week} · ${info.auditor}</div>
+          </div>
+          <button onClick=${onBack} style=${{background:'transparent',color:C.muted,border:'none',fontFamily:mono,fontSize:10,cursor:'pointer'}}>← HOME</button>
         </div>
         <div style=${{marginTop:14}}>
-          <${Bar} v=${(done.length/AREAS.length)*100} color=${C.pass} h=${6}/>
-          <div style=${{color:C.muted,fontSize:11,marginTop:5,fontFamily:mono}}>${done.length}/${AREAS.length} areas completed</div>
+          <${PBar} v=${(doneAr.length/AREAS.length)*100} color=${C.pass}/>
+          <div style=${{color:C.muted,fontSize:11,marginTop:5,fontFamily:mono}}>${doneAr.length}/${AREAS.length} areas completed</div>
         </div>
       </div>
       <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:12}}>SELECT AREA TO AUDIT</div>
-      ${AREAS.map(ar=>{const isDone=done.includes(ar);return html`<button key=${ar} onClick=${()=>{if(!isDone){setArea(ar);setStep('questions');setQi(0);}}} disabled=${isDone} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',background:isDone?C.pass+'0f':C.card,border:`1px solid ${isDone?C.pass+'44':C.border}`,borderRadius:10,padding:'16px 20px',marginBottom:10,color:isDone?C.pass:C.text,cursor:isDone?'default':'pointer',textAlign:'left'}}>
+      ${AREAS.map(ar=>{const done=doneAr.includes(ar);return html`<button key=${ar}
+        onClick=${()=>{if(!done){setCurAr(ar);setStep('questions');setQi(0);}}}
+        disabled=${done}
+        style=${{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',background:done?C.pass+'0f':C.card,border:`1px solid ${done?C.pass+'44':C.border}`,borderRadius:10,padding:'16px 20px',marginBottom:10,color:done?C.pass:C.text,cursor:done?'default':'pointer',textAlign:'left'}}>
         <div>
-          <div style=${{fontFamily:mono,fontSize:13,fontWeight:isDone?700:400}}>${ar}</div>
-          <div style=${{color:C.muted,fontSize:11,marginTop:4}}>${QUESTIONS[ar].length} questions</div>
+          <div style=${{fontFamily:mono,fontSize:13,fontWeight:done?700:400}}>${ar}</div>
+          <div style=${{color:C.muted,fontSize:11,marginTop:4}}>${QS[ar].length} questions</div>
         </div>
-        <span style=${{fontSize:20,color:isDone?C.pass:C.muted}}>${isDone?'✓':'→'}</span>
-      </button>`;})  }
-      ${done.length===AREAS.length?html`<button onClick=${()=>submitAll()} style=${{width:'100%',background:C.pass+'22',color:C.pass,border:`2px solid ${C.pass}`,borderRadius:8,padding:'16px 0',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:12,letterSpacing:0.8}}>✓ SUBMIT ALL — RECORD RESPONSE</button>`:''}
+        <span style=${{fontSize:20,color:done?C.pass:ACLR[ar]}}>${done?'✓':'→'}</span>
+      </button>`;})}
+
+      ${doneAr.length===AREAS.length?html`<button onClick=${submitAll}
+        style=${{width:'100%',background:C.pass+'22',color:C.pass,border:`2px solid ${C.pass}`,borderRadius:8,padding:'16px 0',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:12,letterSpacing:.8}}>
+        ✓ SUBMIT ALL — RECORD RESPONSE
+      </button>`:''}
     </div>
   </div>`;
 
-  // INFO FORM
+  // ── INFO FORM ─────────────────────────────────────────
   return html`<div style=${{minHeight:'100vh',background:C.bg}}>
     <div style=${{maxWidth:500,margin:'0 auto',padding:16}}>
-      <div style=${{textAlign:'center',padding:'28px 0 36px'}}>
+      <div style=${{textAlign:'center',padding:'28px 0 34px'}}>
         <div style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:3}}>AUDIT ENTRY</div>
         <h1 style=${{color:C.text,fontFamily:mono,fontSize:22,fontWeight:700,marginTop:6}}>FILL SCORECARD</h1>
       </div>
-      ${[{label:'SITE NAME',key:'site',type:'select'},{label:'DATE',key:'date',type:'date'},{label:'WEEK NUMBER (AUTO)',key:'week',type:'number',ro:true},{label:'AUDITOR NAME',key:'auditor',type:'text',ph:'Enter full name'}].map(f=>html`
+      ${[
+        {label:'SITE NAME',key:'site',type:'select'},
+        {label:'DATE',key:'date',type:'date'},
+        {label:'WEEK NUMBER (AUTO)',key:'week',type:'number',ro:true},
+        {label:'AUDITOR NAME',key:'auditor',type:'text',ph:'Enter full name'},
+      ].map(f=>html`
         <div key=${f.key} style=${{marginBottom:18}}>
           <label style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,display:'block',marginBottom:8}}>${f.label}</label>
-          ${f.type==='select'?html`<select value=${info[f.key]} onChange=${e=>setInfo(p=>({...p,[f.key]:e.target.value}))} style=${{width:'100%',background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14,fontFamily:'IBM Plex Sans,sans-serif',cursor:'pointer'}}>
-            ${SITES.map(s=>html`<option key=${s}>${s}</option>`)}
-          </select>`:html`<input type=${f.type} readOnly=${f.ro} value=${info[f.key]} placeholder=${f.ph||''} onInput=${e=>{if(f.key==='date'){const d=new Date(e.target.value);setInfo(p=>({...p,date:e.target.value,week:isNaN(d)?p.week:getWeekNum(d)}));}else{setInfo(p=>({...p,[f.key]:e.target.value}));}}} style=${{width:'100%',background:f.ro?'#0a0d12':C.card,color:f.ro?C.muted:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14,fontFamily:'IBM Plex Sans,sans-serif'}}/>`}
-        </div>
-      `)}
-      <button onClick=${()=>info.auditor.trim()?setStep('areas'):alert('Please enter auditor name')} style=${{width:'100%',background:C.accentBg,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'16px 0',fontSize:15,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:8,letterSpacing:1}}>START AUDIT →</button>
-      <button onClick=${onLogout} style=${{width:'100%',background:C.fail+'22',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'14px 0',fontFamily:mono,fontSize:14,fontWeight:700,cursor:'pointer',marginTop:10,letterSpacing:0.8,transition:'all 0.15s'}} onMouseEnter=${e=>{e.target.style.background=C.fail;e.target.style.color='#fff';}} onMouseLeave=${e=>{e.target.style.background=C.fail+'22';e.target.style.color=C.fail;}}>← BACK TO HOME</button>
-    </div>
-  </div>`;
-}
-
-// ═══ LOGIN ═══
-function LoginPage({type,onLogin,onBack}){
-  const[id,setId]=useState('');const[pw,setPw]=useState('');const[err,setErr]=useState('');
-  const handle=()=>{const cr=CREDS[type];if(id===cr.id&&pw===cr.password)onLogin();else setErr('Invalid credentials. Please try again.');};
-  return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-    <div style=${{width:'100%',maxWidth:400}}>
-      <div style=${{textAlign:'center',marginBottom:40}}>
-        <div style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:3,marginBottom:8}}>${type==='viewer'?'DASHBOARD ACCESS':'AUDITOR ACCESS'}</div>
-        <h1 style=${{color:C.text,fontFamily:mono,fontSize:22,fontWeight:700}}>${type==='viewer'?'VIEW DASHBOARD':'FILL SCORECARD'}</h1>
-      </div>
-      <div style=${{...card({borderRadius:12,padding:32})}}>
-        ${[{label:'USER ID',v:id,s:setId,t:'text'},{label:'PASSWORD',v:pw,s:setPw,t:'password'}].map(f=>html`
-          <div key=${f.label} style=${{marginBottom:20}}>
-            <label style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,display:'block',marginBottom:8}}>${f.label}</label>
-            <input type=${f.t} value=${f.v} onInput=${e=>{f.s(e.target.value);setErr('');}} onKeyDown=${e=>e.key==='Enter'&&handle()} style=${{width:'100%',background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14,fontFamily:'IBM Plex Sans,sans-serif'}}/>
-          </div>
-        `)}
-        ${err?html`<div style=${{color:C.fail,fontSize:12,marginBottom:16,fontFamily:mono}}>✗ ${err}</div>`:''}
-        <div style=${{background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:12,marginBottom:18}}>
-          <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1}}>DEMO CREDENTIALS</div>
-          <div style=${{color:C.accent,fontSize:11,fontFamily:mono,marginTop:5}}>ID: ${CREDS[type].id} &nbsp;|&nbsp; Password: ${CREDS[type].password}</div>
-        </div>
-        <button onClick=${handle} style=${{width:'100%',background:C.accentBg,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'14px 0',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1}}>SUBMIT →</button>
-        <button onClick=${onBack} style=${{width:'100%',background:'transparent',color:C.muted,border:'none',padding:'12px 0',fontFamily:mono,fontSize:11,cursor:'pointer',marginTop:8,letterSpacing:0.8}}>← BACK</button>
-      </div>
-    </div>
-  </div>`;
-}
-
-// ═══ LANDING ═══
-function Landing({onV,onF}){
-  return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24}}>
-    <div style=${{width:50,height:3,background:C.accent,borderRadius:2,marginBottom:48}}/>
-    <div style=${{textAlign:'center',marginBottom:64}}>
-      <div style=${{color:C.muted,fontFamily:mono,fontSize:10,letterSpacing:4,marginBottom:18}}>LOGISTICS OPERATIONS MANAGEMENT</div>
-      <h1 style=${{fontFamily:mono,fontSize:'clamp(28px,6vw,56px)',fontWeight:700,color:C.text,lineHeight:1.08,margin:0,letterSpacing:-1}}>WEEKLY AUDIT<br/><span style=${{color:C.accent}}>SCORECARD</span></h1>
-      <p style=${{color:C.muted,marginTop:20,fontSize:14,maxWidth:380,margin:'20px auto 0',lineHeight:1.6}}>Track, measure and improve distribution center performance across all 23 sites</p>
-    </div>
-    <div style=${{display:'flex',gap:20,flexWrap:'wrap',justifyContent:'center'}}>
-      <button onClick=${onV} style=${{background:C.accentBg,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:12,padding:'22px 44px',fontSize:18,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1,minWidth:240,transition:'all 0.2s'}} onMouseEnter=${e=>{e.target.style.background=C.accent;e.target.style.color='#000';}} onMouseLeave=${e=>{e.target.style.background=C.accentBg;e.target.style.color=C.accent;}}>
-        ▤ VIEW DASHBOARD
+          ${f.type==='select'
+            ?html`<select value=${info[f.key]} onChange=${e=>setInfo(p=>({...p,[f.key]:e.target.value}))} style=${{width:'100%',background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14,cursor:'pointer'}}>
+              ${SITES.map(s=>html`<option key=${s}>${s}</option>`)}</select>`
+            :html`<input type=${f.type} readOnly=${!!f.ro} value=${info[f.key]} placeholder=${f.ph||''}
+              onInput=${e=>{if(f.key==='date'){const d=new Date(e.target.value);setInfo(p=>({...p,date:e.target.value,week:isNaN(d.getTime())?p.week:weekNum(d)}));}else setInfo(p=>({...p,[f.key]:e.target.value}));}}
+              style=${{width:'100%',background:f.ro?'#0a0d12':C.card,color:f.ro?C.muted:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14}}/>`}
+        </div>`)}
+      <button onClick=${()=>info.auditor.trim()?setStep('areas'):alert('Please enter auditor name')}
+        style=${{width:'100%',background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'16px 0',fontSize:15,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:8,letterSpacing:1}}>
+        START AUDIT →
       </button>
-      <button onClick=${onF} style=${{background:'transparent',color:C.text,border:`2px solid ${C.border}`,borderRadius:12,padding:'22px 44px',fontSize:18,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1,minWidth:240,transition:'all 0.2s'}} onMouseEnter=${e=>{e.target.style.borderColor=C.text;}} onMouseLeave=${e=>{e.target.style.borderColor=C.border;}}>
-        ✎ FILL SCORECARD
-      </button>
-    </div>
-    <div style=${{marginTop:64,display:'flex',gap:40,color:C.muted,fontSize:11,fontFamily:mono,flexWrap:'wrap',justifyContent:'center'}}>
-      ${['23 DISTRIBUTION CENTERS','59 AUDIT QUESTIONS','6 OPERATIONAL AREAS','REAL-TIME ANALYTICS'].map(x=>html`<span key=${x} style=${{display:'flex',alignItems:'center',gap:8}}><span style=${{color:C.accent,fontSize:14}}>·</span>${x}</span>`)}
+      <button onClick=${onBack} style=${{width:'100%',background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 0',fontFamily:mono,fontSize:13,cursor:'pointer',marginTop:10}}>← BACK TO HOME</button>
     </div>
   </div>`;
 }
 
-// ═══ APP ═══
-function App(){
-  const[page,setPage]=useState('landing');
+// ═══ VIEW DASHBOARD ═══════════════════════════════════
+function ViewDashboard({onBack}){
+  const[records,setRecords]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[error,setError]=useState('');
+  const[expanded,setExpanded]=useState(null);
+  const[fSite,setFSite]=useState('ALL');
+  const[fWeek,setFWeek]=useState('ALL');
+  const[search,setSearch]=useState('');
+  const[lightbox,setLightbox]=useState(null);
 
-  // Init: load ALL records from per-record localStorage keys
-  // Also migrates any data from the old single-blob audit_subs key
-  const[subs,setSubs]=useState(()=>{
-    try{return _loadAllRecs();}
-    catch(e){console.warn('[AUDIT SYNC] Init load failed:',e);return{};}
-  });
+  const load=useCallback(async()=>{
+    setLoading(true);setError('');
+    try{const r=await fetchSheet();if(r.ok){setRecords(r.records||[]);}else setError(r.error||'Fetch failed');}
+    catch(e){setError('Network error: '+e.message);}
+    setLoading(false);
+  },[]);
+  useEffect(()=>{load();},[]);
 
-  const allData=useMemo(()=>mergeData(MOCK,subs),[subs]);
+  const siteOpts=useMemo(()=>['ALL',...[...new Set(records.map(r=>String(r['Site']||'')))].filter(Boolean).sort()],[records]);
+  const weekOpts=useMemo(()=>['ALL',...[...new Set(records.map(r=>String(r['Week_No']||'')))].filter(Boolean).sort((a,b)=>+a-+b)],[records]);
 
-  // Derive active weeks from every stored record across all DCs
-  const activeWeeks=useMemo(()=>{
-    const ws=new Set();
-    Object.values(subs).forEach(sd=>Object.keys(sd).forEach(wk=>ws.add(parseInt(wk))));
-    return[...ws].sort((a,b)=>a-b);
-  },[subs]);
+  const filtered=useMemo(()=>records.filter(r=>{
+    if(fSite!=='ALL'&&String(r['Site'])!==fSite)return false;
+    if(fWeek!=='ALL'&&String(r['Week_No'])!==fWeek)return false;
+    if(search){const q=search.toLowerCase();if(!(String(r['Site'])+String(r['Auditor'])+String(r['Submission_ID'])).toLowerCase().includes(q))return false;}
+    return true;
+  }),[records,fSite,fWeek,search]);
 
-  // ── handleSub: save per-record + merge into state + broadcast ──
-  const handleSub=(site,wk,rec)=>{
-    // Step 1: persist to localStorage immediately (images stripped to stay within quota)
-    _saveRec(site,wk,rec);
+  const stats=useMemo(()=>{
+    if(!filtered.length)return{total:0,avg:0,good:0,bad:0};
+    const avg=Math.round(filtered.reduce((a,r)=>a+Number(r['Overall_Score_%']||0),0)/filtered.length);
+    return{total:filtered.length,avg,good:filtered.filter(r=>Number(r['Overall_Score_%']||0)>=80).length,bad:filtered.filter(r=>Number(r['Overall_Score_%']||0)<60).length};
+  },[filtered]);
 
-    // Step 2: merge into in-memory state — functional update guarantees latest prev
-    // Full rec (with images) stays in memory; only slim version in localStorage
-    setSubs(p=>({...p,[site]:{...(p[site]||{}),[wk]:rec}}));
+  const parseAns=r=>{try{const v=r['Answers_JSON'];return typeof v==='string'?JSON.parse(v):(v||{});}catch{return{};}};
+  const parseURLs=raw=>raw?String(raw).split('\n').filter(u=>u.trim().startsWith('http')):[];
 
-    // Step 3: broadcast slim record to other open tabs — they merge it in
-    try{
-      if(typeof BroadcastChannel!=='undefined'){
-        const bc=new BroadcastChannel('audit_sync');
-        bc.postMessage({type:'sub',site,wk,rec:_stripImages(rec)});
-        bc.close();
-      }
-    }catch(e){console.warn('[AUDIT SYNC] Broadcast failed:',e);}
+  const AREA_SCORE_KEYS={
+    'INBOUND OUTBOUND STAGING':'IOS_Score_%','BBB AREA':'BBB_Score_%',
+    'PRIMARY SORTING AREA':'PSA_Score_%','SECONDARY SORTING AREA':'SSA_Score_%',
+    'EXCEPTION AREA':'EXC_Score_%','VOLUMETRIC HANDLING':'VOL_Score_%'
   };
 
-  useEffect(()=>{
-    // ── BroadcastChannel: receive submissions from other open tabs ──
-    // MERGE into state — never replace, never lose existing entries
-    let bc=null;
-    try{
-      if(typeof BroadcastChannel!=='undefined'){
-        bc=new BroadcastChannel('audit_sync');
-        bc.onmessage=(e)=>{
-          if(e.data?.type==='sub'){
-            const{site,wk,rec}=e.data;
-            if(site&&wk&&rec){
-              setSubs(p=>({...p,[site]:{...(p[site]||{}),[parseInt(wk)]:rec}}));
-            }
-          }
-        };
-      }
-    }catch(e){console.warn('[AUDIT SYNC] BroadcastChannel setup failed:',e);}
+  return html`<div style=${{minHeight:'100vh',background:C.bg}}>
+    ${lightbox?html`<${Lightbox} items=${lightbox.items} idx=${lightbox.idx} onClose=${()=>setLightbox(null)}/>`:''}
 
-    // ── Storage event: another tab wrote a per-record key ──
-    // Parse the specific site+wk from the key and merge just that record
-    const handler=(e)=>{
-      if(!e.key||!e.key.startsWith(_PFX)||e.key===_PFX+'idx')return;
-      if(!e.newValue)return;
-      try{
-        // Key format: audit_r2_{encodeURIComponent(site)}__{wk}
-        const body=e.key.slice(_PFX.length);
-        const dbl=body.lastIndexOf('__');
-        if(dbl===-1)return;
-        const site=decodeURIComponent(body.slice(0,dbl));
-        const wk=parseInt(body.slice(dbl+2));
-        const rec=JSON.parse(e.newValue);
-        if(site&&!isNaN(wk)&&rec){
-          // Merge this single record — do NOT replace the whole subs state
-          setSubs(p=>({...p,[site]:{...(p[site]||{}),[wk]:rec}}));
-        }
-      }catch(e2){console.warn('[AUDIT SYNC] Storage event parse failed:',e2);}
-    };
-    window.addEventListener('storage',handler);
+    ${/* ── Header ── */null}
+    <div style=${{background:C.card,borderBottom:`1px solid ${C.border}`,padding:'14px 24px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12,position:'sticky',top:0,zIndex:50}}>
+      <div>
+        <div style=${{color:C.accent,fontFamily:mono,fontSize:9,letterSpacing:2.5,marginBottom:3}}>LOGISTICS OPERATIONS MANAGEMENT</div>
+        <div style=${{color:C.text,fontFamily:mono,fontSize:18,fontWeight:700}}>VIEW DASHBOARD</div>
+      </div>
+      <div style=${{display:'flex',gap:10,flexWrap:'wrap'}}>
+        <button onClick=${load} disabled=${loading}
+          style=${{background:C.abl,color:C.accent,border:`1px solid ${C.accent}44`,borderRadius:8,padding:'9px 18px',fontFamily:mono,fontSize:11,fontWeight:600,cursor:'pointer',letterSpacing:.8}}>
+          ${loading?html`<span class="spin">↻</span> SYNCING…`:'↻ REFRESH'}
+        </button>
+        <button onClick=${onBack} style=${{background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'9px 18px',fontFamily:mono,fontSize:11,cursor:'pointer',letterSpacing:.8}}>← HOME</button>
+      </div>
+    </div>
 
-    return()=>{
-      window.removeEventListener('storage',handler);
-      if(bc){try{bc.close();}catch{}}
-    };
-  },[]);
+    ${!sheetOK()?html`<div style=${{background:'#1a1200',borderBottom:`1px solid #f59e0b33`,padding:'8px 24px',fontFamily:mono,fontSize:11,color:'#d97706'}}>
+      ⚠ SHEET_URL not configured — set your Apps Script Web App URL in the config section at the top of this file.
+    </div>`:''}
 
-  if(page==='landing')return html`<${Landing} onV=${()=>setPage('lv')} onF=${()=>setPage('fill')}/>`;
-  if(page==='lv')return html`<${LoginPage} type="viewer" onLogin=${()=>setPage('dash')} onBack=${()=>setPage('landing')}/>`;
-  if(page==='dash')return html`<${Dashboard} data=${allData} activeWeeks=${activeWeeks} subs=${subs} onLogout=${()=>setPage('landing')}/>`;
-  if(page==='fill')return html`<${FillScorecard} onLogout=${()=>setPage('landing')} onSubmit=${handleSub}/>`;
+    <div style=${{maxWidth:1400,margin:'0 auto',padding:'24px 20px'}}>
+
+      ${/* ── Stats cards ── */null}
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:24}}>
+        ${[{l:'TOTAL SUBMISSIONS',v:stats.total,c:C.accent},{l:'AVERAGE SCORE',v:stats.total?stats.avg+'%':'—',c:stats.total?sc(stats.avg):C.muted},{l:'≥ 80% GOOD',v:stats.good,c:C.pass},{l:'< 60% ACTION NEEDED',v:stats.bad,c:C.fail}].map(({l,v,c})=>html`
+          <div key=${l} style=${{...card({padding:16})}}>
+            <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1,marginBottom:6}}>${l}</div>
+            <div style=${{color:c,fontFamily:mono,fontSize:26,fontWeight:700}}>${v}</div>
+          </div>`)}
+      </div>
+
+      ${/* ── Filters ── */null}
+      <div style=${{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap',alignItems:'center'}}>
+        <input placeholder="Search site / auditor / ID…" value=${search} onInput=${e=>setSearch(e.target.value)}
+          style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 14px',fontSize:13,flex:1,minWidth:180,outline:'none'}}/>
+        <select value=${fSite} onChange=${e=>setFSite(e.target.value)} style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 14px',fontSize:13,cursor:'pointer'}}>
+          ${siteOpts.map(s=>html`<option key=${s} value=${s}>${s==='ALL'?'All Sites':s}</option>`)}
+        </select>
+        <select value=${fWeek} onChange=${e=>setFWeek(e.target.value)} style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 14px',fontSize:13,cursor:'pointer'}}>
+          ${weekOpts.map(w=>html`<option key=${w} value=${w}>${w==='ALL'?'All Weeks':'Week '+w}</option>`)}
+        </select>
+        ${(fSite!=='ALL'||fWeek!=='ALL'||search)?html`<button onClick=${()=>{setFSite('ALL');setFWeek('ALL');setSearch('');}} style=${{background:C.fail+'22',color:C.fail,border:`1px solid ${C.fail}44`,borderRadius:8,padding:'10px 14px',fontFamily:mono,fontSize:11,cursor:'pointer'}}>✕ CLEAR</button>`:''}
+      </div>
+
+      ${/* ── Loading / Error / Empty ── */null}
+      ${loading?html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:12,padding:60,color:C.muted,fontFamily:mono,fontSize:13}}>
+        <span class="spin" style=${{fontSize:22}}>↻</span> Loading from Google Sheets…
+      </div>`:''}
+      ${!loading&&error?html`<div style=${{...card({padding:40,textAlign:'center'})}}>
+        <div style=${{fontSize:36,marginBottom:12,opacity:.3}}>⚠</div>
+        <div style=${{color:C.fail,fontFamily:mono,fontSize:13,fontWeight:700,marginBottom:8}}>FETCH ERROR</div>
+        <div style=${{color:C.muted,fontSize:12,marginBottom:20}}>${error}</div>
+        <button onClick=${load} style=${{background:C.abl,color:C.accent,border:`1px solid ${C.accent}`,borderRadius:8,padding:'10px 24px',fontFamily:mono,fontSize:12,cursor:'pointer'}}>↺ RETRY</button>
+      </div>`:''}
+      ${!loading&&!error&&filtered.length===0?html`<div style=${{...card({padding:60,textAlign:'center'})}}>
+        <div style=${{fontSize:40,opacity:.15,marginBottom:14}}>📋</div>
+        <div style=${{color:C.muted,fontFamily:mono,fontSize:13,fontWeight:600,letterSpacing:1}}>NO RECORDS FOUND</div>
+        <div style=${{color:C.muted,fontSize:12,marginTop:8}}>${records.length?'Try adjusting filters.':'No submissions yet — fill a scorecard to see data here.'}</div>
+      </div>`:''}
+
+      ${/* ── Table ── */null}
+      ${!loading&&!error&&filtered.length>0?html`<div style=${{overflowX:'auto',borderRadius:8,border:`1px solid ${C.border}`}}>
+        <table class="vdt">
+          <thead><tr>
+            <th style=${{width:40}}></th>
+            <th>SUBMISSION ID</th>
+            <th>TIMESTAMP</th>
+            <th>SITE</th>
+            <th>WEEK</th>
+            <th>DATE</th>
+            <th>AUDITOR</th>
+            <th>SCORE</th>
+            <th>PASS</th>
+            <th>FAIL</th>
+            <th>NA</th>
+            <th>IMAGES</th>
+            <th>VIDEOS</th>
+          </tr></thead>
+          <tbody>
+            ${filtered.map((rec,idx)=>{
+              const score=Number(rec['Overall_Score_%']||0);
+              const imgs=parseURLs(rec['Image_URLs']);
+              const vids=parseURLs(rec['Video_URLs']);
+              const isExp=expanded===idx;
+              return html`
+                <tr key=${idx}>
+                  <td>
+                    <button onClick=${()=>setExpanded(isExp?null:idx)}
+                      style=${{background:isExp?C.abl:'transparent',color:isExp?C.accent:C.muted,border:`1px solid ${isExp?C.accent:C.border}`,borderRadius:4,padding:'4px 10px',fontFamily:mono,fontSize:11,cursor:'pointer',transition:'all .15s'}}>
+                      ${isExp?'▲':'▼'}
+                    </button>
+                  </td>
+                  <td style=${{fontFamily:mono,fontSize:10,color:C.muted}}>${String(rec['Submission_ID']||'—')}</td>
+                  <td style=${{fontFamily:mono,fontSize:10,color:C.muted,whiteSpace:'nowrap'}}>${String(rec['Timestamp_IST']||'—').slice(0,16)}</td>
+                  <td style=${{fontFamily:mono,fontSize:12,fontWeight:600,color:C.text}}>${String(rec['Site']||'—')}</td>
+                  <td style=${{fontFamily:mono,fontSize:12,color:C.accent,textAlign:'center'}}>W${String(rec['Week_No']||'?').padStart(2,'0')}</td>
+                  <td style=${{fontSize:12,color:C.muted,whiteSpace:'nowrap'}}>${String(rec['Audit_Date']||'—')}</td>
+                  <td style=${{fontSize:12,color:C.text}}>${String(rec['Auditor']||'—')}</td>
+                  <td style=${{textAlign:'center'}}>
+                    <span style=${{background:sc(score)+'22',color:sc(score),border:`1px solid ${sc(score)}44`,borderRadius:4,padding:'3px 10px',fontFamily:mono,fontSize:13,fontWeight:700}}>${score}%</span>
+                  </td>
+                  <td style=${{fontFamily:mono,fontSize:12,color:C.pass,textAlign:'center',fontWeight:700}}>${rec['Pass_Count']||0}</td>
+                  <td style=${{fontFamily:mono,fontSize:12,color:C.fail,textAlign:'center',fontWeight:700}}>${rec['Fail_Count']||0}</td>
+                  <td style=${{fontFamily:mono,fontSize:12,color:C.na,textAlign:'center'}}>${rec['NA_Count']||0}</td>
+                  <td>
+                    ${imgs.length>0?html`<div style=${{display:'flex',gap:4,flexWrap:'wrap'}}>
+                      ${imgs.slice(0,3).map((url,j)=>html`<a key=${j} href=${url} target="_blank" class="mlink" title=${url}>🖼 ${j+1}</a>`)}
+                      ${imgs.length>3?html`<span style=${{color:C.muted,fontSize:10,fontFamily:mono,alignSelf:'center'}}>+${imgs.length-3}</span>`:''}
+                    </div>`:html`<span style=${{color:C.border}}>—</span>`}
+                  </td>
+                  <td>
+                    ${vids.length>0?html`<div style=${{display:'flex',gap:4,flexWrap:'wrap'}}>
+                      ${vids.slice(0,3).map((url,j)=>html`<a key=${j} href=${url} target="_blank" download class="mlink" title=${url}>🎥 ${j+1}</a>`)}
+                      ${vids.length>3?html`<span style=${{color:C.muted,fontSize:10,fontFamily:mono,alignSelf:'center'}}>+${vids.length-3}</span>`:''}
+                    </div>`:html`<span style=${{color:C.border}}>—</span>`}
+                  </td>
+                </tr>
+                ${isExp?html`<tr key=${'x'+idx}>
+                  <td colspan="13" style=${{padding:0,background:'#0a0f16'}}>
+                    <div style=${{padding:'20px 24px'}} class="fi">
+                      <div style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:1.5,marginBottom:16}}>DETAILED ANSWERS — ${rec['Site']} · Week ${rec['Week_No']}</div>
+
+                      ${/* Area score pills */null}
+                      <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:20}}>
+                        ${AREAS.map(area=>html`<div key=${area} style=${{background:ACLR[area]+'18',border:`1px solid ${ACLR[area]}44`,borderRadius:6,padding:'8px 12px',textAlign:'center',minWidth:82}}>
+                          <div style=${{fontSize:8,color:ACLR[area],fontFamily:mono,fontWeight:700,marginBottom:4}}>${ASHORT[area]}</div>
+                          <div style=${{fontSize:18,fontFamily:mono,fontWeight:700,color:ACLR[area]}}>${Number(rec[AREA_SCORE_KEYS[area]]||0)}%</div>
+                        </div>`)}
+                      </div>
+
+                      ${/* Per-area Q&A */null}
+                      ${Object.entries(parseAns(rec)).map(([area,qs])=>html`
+                        <div key=${area} style=${{marginBottom:20}}>
+                          <div style=${{color:ACLR[area]||C.muted,fontFamily:mono,fontSize:11,fontWeight:700,letterSpacing:.8,padding:'6px 10px',background:(ACLR[area]||C.muted)+'11',borderLeft:`3px solid ${ACLR[area]||C.muted}`,borderRadius:'0 4px 4px 0',marginBottom:8}}>${area}</div>
+                          ${Object.entries(qs||{}).map(([q,a])=>{
+                            const ac=a.answer==='PASS'?C.pass:a.answer==='FAIL'?C.fail:C.na;
+                            const iUrls=a.imageURLs||[];const vUrls=a.videoURLs||[];
+                            return html`<div key=${q} style=${{display:'flex',gap:12,padding:'8px 0',borderBottom:`1px solid ${C.border}18`,alignItems:'flex-start',flexWrap:'wrap'}}>
+                              <span style=${{background:ac+'22',color:ac,border:`1px solid ${ac}44`,borderRadius:4,padding:'2px 8px',fontFamily:mono,fontSize:11,fontWeight:700,flexShrink:0,marginTop:2}}>${a.answer||'NA'}</span>
+                              <div style=${{flex:1,minWidth:160}}>
+                                <div style=${{color:C.text,fontSize:12,lineHeight:1.5}}>${q}</div>
+                                ${a.remark?html`<div style=${{color:'#d97706',fontSize:11,marginTop:3,fontStyle:'italic'}}>↳ ${a.remark}</div>`:''}
+                                ${(iUrls.length>0||vUrls.length>0)?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>
+                                  ${iUrls.map((url,j)=>html`<a key=${'i'+j} href=${url} target="_blank" class="mlink">🖼 Image ${j+1}</a>`)}
+                                  ${vUrls.map((url,j)=>html`<a key=${'v'+j} href=${url} target="_blank" download class="mlink">🎥 Video ${j+1}</a>`)}
+                                </div>`:''}
+                              </div>
+                            </div>`;
+                          })}
+                        </div>`)}
+
+                      ${/* Media gallery */null}
+                      ${imgs.length>0?html`<div style=${{marginTop:16,padding:16,background:C.card,borderRadius:8,border:`1px solid ${C.border}`}}>
+                        <div style=${{color:C.muted,fontFamily:mono,fontSize:10,letterSpacing:1,marginBottom:12}}>IMAGE GALLERY (${imgs.length})</div>
+                        <div style=${{display:'flex',flexWrap:'wrap',gap:8}}>
+                          ${imgs.map((url,j)=>html`<div key=${j}
+                            onClick=${()=>setLightbox({items:imgs.map(src=>({type:'image',src})),idx:j})}
+                            style=${{width:80,height:80,borderRadius:6,overflow:'hidden',cursor:'pointer',border:`2px solid ${C.border}`,transition:'border-color .15s'}}
+                            onMouseEnter=${e=>e.currentTarget.style.borderColor=C.accent}
+                            onMouseLeave=${e=>e.currentTarget.style.borderColor=C.border}>
+                            <img src=${url} style=${{width:'100%',height:'100%',objectFit:'cover'}}/>
+                          </div>`)}
+                        </div>
+                      </div>`:''}
+
+                      ${vids.length>0?html`<div style=${{marginTop:12,padding:16,background:C.card,borderRadius:8,border:`1px solid ${C.border}`}}>
+                        <div style=${{color:C.muted,fontFamily:mono,fontSize:10,letterSpacing:1,marginBottom:12}}>VIDEO DOWNLOADS (${vids.length})</div>
+                        <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
+                          ${vids.map((url,j)=>html`<a key=${j} href=${url} target="_blank" download
+                            style=${{display:'flex',alignItems:'center',gap:6,background:'#0a2030',border:`1px solid #06b6d444`,borderRadius:6,padding:'9px 16px',color:'#06b6d4',textDecoration:'none',fontFamily:mono,fontSize:12,transition:'all .15s'}}
+                            onMouseEnter=${e=>{e.currentTarget.style.background='#06b6d422';e.currentTarget.style.borderColor='#06b6d4';}}
+                            onMouseLeave=${e=>{e.currentTarget.style.background='#0a2030';e.currentTarget.style.borderColor='#06b6d444';}}>
+                            🎥 Download Video ${j+1}
+                          </a>`)}
+                        </div>
+                      </div>`:''}
+                    </div>
+                  </td>
+                </tr>`:''}`;
+            })}
+          </tbody>
+        </table>
+      </div>`:''}
+
+      ${!loading&&!error&&filtered.length>0?html`<div style=${{color:C.muted,fontFamily:mono,fontSize:11,textAlign:'center',marginTop:12}}>
+        Showing ${filtered.length} of ${records.length} record${records.length!==1?'s':''}
+      </div>`:''}
+
+    </div>
+  </div>`;
+}
+
+// ═══ APP ══════════════════════════════════════════════
+function App(){
+  const[page,setPage]=useState('landing'); // landing | login | fill | view
+  if(page==='landing')return html`<${Landing} onFill=${()=>setPage('login')} onView=${()=>setPage('view')}/>`;
+  if(page==='login') return html`<${Login}    onOk=${()=>setPage('fill')} onBack=${()=>setPage('landing')}/>`;
+  if(page==='fill')  return html`<${FillScorecard} onBack=${()=>setPage('landing')}/>`;
+  if(page==='view')  return html`<${ViewDashboard} onBack=${()=>setPage('landing')}/>`;
   return null;
 }
 
