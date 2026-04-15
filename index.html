@@ -149,6 +149,27 @@ async function compressImg(src,maxW=400,q=0.55){
   });
 }
 
+// ── Convert any video source → base64 data URI for Drive storage ──
+// Apps Script receives this, saves the file to Google Drive, and
+// replaces the base64 with a permanent Drive preview URL.
+async function vidSrcToBase64(src){
+  try{
+    let blob;
+    if(src instanceof File||src instanceof Blob){blob=src;}
+    else if(typeof src==='string'&&src.startsWith('blob:')){blob=await fetch(src).then(r=>r.blob());}
+    else if(typeof src==='string'&&src.startsWith('data:')){return src;}// already encoded
+    else return null;
+    // Warn if video is very large (>25 MB)
+    if(blob.size>25*1024*1024){console.warn('Video >25MB, may be slow to upload:',blob.size);} 
+    return new Promise((res,rej)=>{
+      const rd=new FileReader();
+      rd.onload=e=>res(e.target.result);
+      rd.onerror=()=>rej(new Error('FileReader failed'));
+      rd.readAsDataURL(blob);
+    });
+  }catch(e){console.warn('vidSrcToBase64:',e);return null;}
+}
+
 // ════════════════════════════════════════════════════════
 //  SHEET COMMUNICATION
 // ════════════════════════════════════════════════════════
@@ -247,59 +268,111 @@ function ChartComp({type,data,options,style={}}){
 // ════════════════════════════════════════════════════════
 //  VIDEO URL UTILITIES
 // ════════════════════════════════════════════════════════
-// Convert any Google Drive "view" or "open" link → direct embeddable src
 function resolveVideoUrl(url){
   if(!url)return null;
-  // Google Drive: /file/d/ID/view or /open?id=ID → /uc?export=download&id=ID
-  const gdMatch=url.match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
-  if(gdMatch)return`https://drive.google.com/file/d/${gdMatch[1]}/preview`;
+  const gdFile=url.match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
+  if(gdFile)return{type:'drive',preview:`https://drive.google.com/file/d/${gdFile[1]}/preview`,download:`https://drive.google.com/uc?id=${gdFile[1]}&export=download`,view:`https://drive.google.com/file/d/${gdFile[1]}/view`};
   const gdOpen=url.match(/drive\.google\.com\/open\?id=([^&]+)/);
-  if(gdOpen)return`https://drive.google.com/file/d/${gdOpen[1]}/preview`;
-  // Blob URLs that originated in this session are valid — keep them
-  if(url.startsWith('blob:'))return url;
-  // data: URIs, http/https direct — keep as-is
-  return url;
+  if(gdOpen)return{type:'drive',preview:`https://drive.google.com/file/d/${gdOpen[1]}/preview`,download:`https://drive.google.com/uc?id=${gdOpen[1]}&export=download`,view:`https://drive.google.com/file/d/${gdOpen[1]}/view`};
+  if(url.startsWith('data:video/')||url.startsWith('data:application/'))return{type:'data',src:url};
+  if(url.startsWith('blob:'))return{type:'blob',src:url};
+  if(url.startsWith('http'))return{type:'direct',src:url};
+  return null;
 }
 
-function isGDriveEmbed(url){
-  return url&&url.includes('drive.google.com')&&url.includes('/preview');
+// Trigger a browser download for a data URI or blob URL
+function downloadVideo(src,name='audit_video'){
+  const a=document.createElement('a');
+  a.href=src;
+  a.download=name+(src.startsWith('data:video/webm')?'.webm':'.mp4');
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
 
 // ════════════════════════════════════════════════════════
-//  LIGHTBOX
+//  VIDEO PLAYER — plays Drive, direct HTTP, data URIs, blob
 // ════════════════════════════════════════════════════════
-function VideoPlayer({src}){
+function VideoPlayer({src,name}){
   const[err,setErr]=useState(false);const[loading,setLoading]=useState(true);
   const resolved=resolveVideoUrl(src);
-  // Google Drive preview → iframe embed
-  if(isGDriveEmbed(resolved)){
-    return html`<iframe src=${resolved} width="100%" height="480" allow="autoplay" allowfullscreen style=${{border:'none',borderRadius:8,background:'#000'}}/>`;
+
+  if(!resolved){
+    return html`<div style=${{padding:44,textAlign:'center',color:C.muted,fontFamily:mono,fontSize:11}}>
+      <div style=${{fontSize:44,marginBottom:14,opacity:.2}}>🎥</div>
+      No video source available.
+    </div>`;
   }
-  // Blob URL from current session OR direct HTTP(S) video
-  if(resolved&&(resolved.startsWith('blob:')||resolved.startsWith('http')||resolved.startsWith('data:'))){
+
+  // ── Google Drive — use iframe embed (always works, no CORS) ──
+  if(resolved.type==='drive'){
+    return html`<div style=${{display:'flex',flexDirection:'column',width:'100%'}}>
+      <iframe
+        src=${resolved.preview}
+        style=${{width:'100%',height:'480px',border:'none',borderRadius:8,background:'#000',display:'block'}}
+        allow="autoplay; fullscreen"
+        allowfullscreen/>
+      <div style=${{display:'flex',gap:8,marginTop:10,justifyContent:'center',flexWrap:'wrap'}}>
+        <a href=${resolved.view} target="_blank"
+          style=${{background:'#0a2030',color:C.cyan,border:`1px solid ${C.cyan}44`,borderRadius:6,padding:'7px 16px',fontFamily:mono,fontSize:11,fontWeight:700,textDecoration:'none',letterSpacing:.6}}>
+          🔗 OPEN IN DRIVE
+        </a>
+        <a href=${resolved.download} target="_blank"
+          style=${{background:'#0a2030',color:C.pass,border:`1px solid ${C.pass}44`,borderRadius:6,padding:'7px 16px',fontFamily:mono,fontSize:11,fontWeight:700,textDecoration:'none',letterSpacing:.6}}>
+          ⬇ DOWNLOAD VIDEO
+        </a>
+      </div>
+    </div>`;
+  }
+
+  // ── data: URI or blob: URL (local session video) ──
+  if(resolved.type==='data'||resolved.type==='blob'){
     if(err){
       return html`<div style=${{padding:40,textAlign:'center',color:C.muted}}>
-        <div style=${{fontSize:40,marginBottom:12}}>🎥</div>
-        <div style=${{fontFamily:mono,fontSize:11,fontWeight:600,marginBottom:6,color:'#fca5a5'}}>VIDEO UNAVAILABLE</div>
-        <div style=${{fontSize:10,lineHeight:1.6,maxWidth:320,margin:'0 auto'}}>
-          Videos from recorded sessions expire after page refresh.<br/>
-          Configure Cloudinary in CONFIG to enable persistent video storage.
+        <div style=${{fontSize:44,marginBottom:12,opacity:.2}}>🎥</div>
+        <div style=${{fontFamily:mono,fontSize:11,fontWeight:700,color:'#fca5a5',marginBottom:8}}>VIDEO UNAVAILABLE</div>
+        <div style=${{fontSize:10,lineHeight:1.7,maxWidth:300,margin:'0 auto',marginBottom:16}}>
+          ${resolved.type==='blob'?'Session video expired. Videos are now auto-saved to Google Drive — this only affects old submissions.':'Video data could not be loaded.'}
         </div>
-        ${src?html`<a href=${src} target="_blank" style=${{display:'inline-block',marginTop:14,color:C.cyan,fontFamily:mono,fontSize:10}}>Open link in new tab →</a>`:''}
       </div>`;
     }
-    return html`<div style=${{position:'relative',width:'100%'}}>
-      ${loading?html`<div style=${{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:C.muted,fontFamily:mono,fontSize:11}}><span class="spin">◎</span></div>`:''}
-      <video src=${resolved} controls autoPlay
+    return html`<div style=${{display:'flex',flexDirection:'column',width:'100%'}}>
+      <div style=${{position:'relative',width:'100%'}}>
+        ${loading?html`<div style=${{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#000',borderRadius:8,zIndex:1}}><span class="spin" style=${{color:C.accent,fontSize:20}}>◎</span></div>`:''}
+        <video src=${resolved.src} controls autoPlay
+          onLoadedData=${()=>setLoading(false)}
+          onError=${()=>{setLoading(false);setErr(true);}}
+          style=${{width:'100%',maxHeight:'65vh',display:'block',borderRadius:8,background:'#000'}}/>
+      </div>
+      ${resolved.type==='data'?html`<div style=${{display:'flex',gap:8,marginTop:10,justifyContent:'center'}}>
+        <button onClick=${()=>downloadVideo(resolved.src,name||'audit_video')}
+          style=${{background:'#0a2030',color:C.pass,border:`1px solid ${C.pass}44`,borderRadius:6,padding:'7px 16px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:.6}}>
+          ⬇ DOWNLOAD VIDEO
+        </button>
+      </div>`:''}
+    </div>`;
+  }
+
+  // ── Direct HTTP/HTTPS URL (Cloudinary or other CDN) ──
+  if(err){
+    return html`<div style=${{padding:40,textAlign:'center',color:C.muted}}>
+      <div style=${{fontSize:44,marginBottom:12,opacity:.2}}>🎥</div>
+      <div style=${{fontFamily:mono,fontSize:11,fontWeight:700,color:'#fca5a5',marginBottom:8}}>VIDEO FAILED TO LOAD</div>
+      <a href=${src} target="_blank" style=${{color:C.cyan,fontFamily:mono,fontSize:10,display:'block',marginTop:6,wordBreak:'break-all'}}>Open original link ↗</a>
+    </div>`;
+  }
+  return html`<div style=${{display:'flex',flexDirection:'column',width:'100%'}}>
+    <div style=${{position:'relative',width:'100%'}}>
+      ${loading?html`<div style=${{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#000',borderRadius:8,zIndex:1}}><span class="spin" style=${{color:C.accent,fontSize:20}}>◎</span></div>`:''}
+      <video src=${resolved.src} controls autoPlay
         onLoadedData=${()=>setLoading(false)}
         onError=${()=>{setLoading(false);setErr(true);}}
         style=${{width:'100%',maxHeight:'65vh',display:'block',borderRadius:8,background:'#000'}}/>
-    </div>`;
-  }
-  // No valid source
-  return html`<div style=${{padding:40,textAlign:'center',color:C.muted,fontFamily:mono,fontSize:11}}>
-    <div style=${{fontSize:40,marginBottom:12,opacity:.3}}>🎥</div>
-    No video source available.<br/>Configure Cloudinary for cloud video storage.
+    </div>
+    <div style=${{display:'flex',gap:8,marginTop:10,justifyContent:'center'}}>
+      <a href=${resolved.src} download target="_blank"
+        style=${{background:'#0a2030',color:C.pass,border:`1px solid ${C.pass}44`,borderRadius:6,padding:'7px 16px',fontFamily:mono,fontSize:11,fontWeight:700,textDecoration:'none',letterSpacing:.6}}>
+        ⬇ DOWNLOAD VIDEO
+      </a>
+    </div>
   </div>`;
 }
 
@@ -335,7 +408,7 @@ function Lightbox({items,idx:start=0,onClose}){
               style=${{maxWidth:'100%',maxHeight:'70vh',objectFit:'contain',transform:`scale(${zoom})`,transition:'transform .2s',cursor:zoom>1?'grab':'default'}}
               onError=${e=>{e.target.style.display='none';e.target.parentElement.innerHTML='<div style="color:#6b7280;fontFamily:monospace;padding:40px;fontSize:11px">Image unavailable</div>';}}
             />`
-          :html`<${VideoPlayer} src=${it.url||it.src}/>`}
+          :html`<${VideoPlayer} src=${it.url||it.src} name=${it.name||'audit_video'}/>`}
       </div>
       ${/* ── Thumbnails ── */null}
       ${items.length>1?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'center',maxWidth:'90vw'}}>
@@ -491,11 +564,18 @@ function FillScorecard({onBack}){
       }
       for(const vid of(a.videos||[])){
         try{
-          // For videos: try cloud, no base64 fallback (too large)
           const src=vid.blob||vid.file||vid.url;
-          if(cloudOK()){const u=await uploadToCloud(src,'video');if(u)vidURLs.push(u);}
-          // If no cloud, store object URL as placeholder (won't persist after session)
-          else if(vid.url)vidURLs.push(vid.url);
+          if(cloudOK()){
+            // Cloudinary path — upload directly to cloud
+            const u=await uploadToCloud(src,'video');if(u)vidURLs.push(u);
+          }else{
+            // No Cloudinary: encode as base64 data URI.
+            // Apps Script doPost() will detect this, save to Google Drive,
+            // and replace with a permanent Drive preview URL in the sheet.
+            const dataUri=await vidSrcToBase64(src);
+            if(dataUri){vidURLs.push(dataUri);}
+            else if(vid.url){vidURLs.push(vid.url);}// last-resort blob fallback
+          }
         }catch(e){console.warn('vid:',e);}
         uploaded++;setUpP({done:uploaded,total:totalMedia,phase:'uploading'});
       }
@@ -510,7 +590,7 @@ function FillScorecard({onBack}){
   };
   const qs=curAr?QS[curAr]:[];const cq=qs[qi]||'';const ca=getA(curAr,cq);
   const arOk=qs.length>0&&qs.every(q=>['PASS','FAIL','NA'].includes(getA(curAr,q).answer));
-  if(step==='done')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><div style=${{textAlign:'center',padding:40}} class="fi"><div style=${{fontSize:72,color:C.pass,marginBottom:16}}>✓</div><div style=${{color:C.pass,fontFamily:mono,fontSize:22,fontWeight:700,marginBottom:10}}>RESPONSE RECORDED</div><div style=${{color:C.muted,fontSize:14,marginBottom:6}}>Audit submitted for <b style=${{color:C.text}}>${info.site}</b></div><div style=${{color:C.muted,fontFamily:mono,fontSize:13,marginBottom:32}}>Week ${info.week} · ${info.auditor}</div>${!cloudOK()?html`<div style=${{background:'#0a1a2a',border:`1px solid #3b82f644`,borderRadius:8,padding:12,marginBottom:14,color:'#60a5fa',fontSize:12,fontFamily:mono}}>ℹ Images compressed and stored in sheet. Configure Cloudinary for video cloud storage.</div>`:''}<button onClick=${onBack} style=${{background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'14px 32px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1}}>← BACK TO HOME</button></div></div>`;
+  if(step==='done')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><div style=${{textAlign:'center',padding:40}} class="fi"><div style=${{fontSize:72,color:C.pass,marginBottom:16}}>✓</div><div style=${{color:C.pass,fontFamily:mono,fontSize:22,fontWeight:700,marginBottom:10}}>RESPONSE RECORDED</div><div style=${{color:C.muted,fontSize:14,marginBottom:6}}>Audit submitted for <b style=${{color:C.text}}>${info.site}</b></div><div style=${{color:C.muted,fontFamily:mono,fontSize:13,marginBottom:32}}>Week ${info.week} · ${info.auditor}</div>${!cloudOK()?html`<div style=${{background:'#0a1a2a',border:`1px solid #3b82f644`,borderRadius:8,padding:12,marginBottom:14,color:'#60a5fa',fontSize:12,fontFamily:mono,lineHeight:1.7}}>ℹ Images compressed and stored in sheet.<br/>Videos saved to Google Drive automatically — links persist forever.</div>`:''}<button onClick=${onBack} style=${{background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'14px 32px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1}}>← BACK TO HOME</button></div></div>`;
   if(step==='error')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><div style=${{textAlign:'center',padding:40,maxWidth:460}} class="fi"><div style=${{fontSize:60,marginBottom:12}}>⚠</div><div style=${{color:C.fail,fontFamily:mono,fontSize:18,fontWeight:700,marginBottom:12}}>SUBMISSION FAILED</div><div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,color:C.muted,fontSize:12,marginBottom:22,wordBreak:'break-all',whiteSpace:'pre-line'}}>${errMsg}</div><div style=${{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}><button onClick=${()=>setStep('areas')} style=${{background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 22px',fontFamily:mono,fontSize:13,cursor:'pointer'}}>← GO BACK</button><button onClick=${submitAll} style=${{background:C.fail+'22',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'12px 22px',fontFamily:mono,fontSize:13,fontWeight:700,cursor:'pointer'}}>↺ RETRY</button></div></div></div>`;
   if(step==='uploading')return html`<${UploadModal} done=${upP.done} total=${upP.total} phase=${upP.phase}/>`;
   if(step==='questions'&&curAr)return html`<div style=${{minHeight:'100vh',background:C.bg}}>
