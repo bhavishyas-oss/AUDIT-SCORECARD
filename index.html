@@ -237,8 +237,9 @@ async function fetchSheet(force=false){
   if(!force&&_cache.data&&Date.now()-_cache.ts<CACHE_TTL)return _cache.data;
   const result=await _jsonp(SHEET_URL+'?action=get');
   if(result.ok){
-    // Remove week 16 (legacy / test data) at fetch time — never shown anywhere
-    result.records=(result.records||[]).filter(r=>Number(r['Week_No'])!==16);
+    // Remove legacy weeks (12-16) at fetch time — never shown anywhere
+    const PURGE_WEEKS=new Set([12,13,14,15,16]);
+    result.records=(result.records||[]).filter(r=>!PURGE_WEEKS.has(Number(r['Week_No'])));
     _cache.data=result;_cache.ts=Date.now();
   }
   return result;
@@ -720,7 +721,7 @@ function FillScorecard({onBack}){
     ${cam?html`<div class="overlay"><div style=${{textAlign:'center',width:'100%',maxWidth:480}}><video ref=${vRef} autoPlay playsinline style=${{width:'100%',borderRadius:8}}/><canvas ref=${cRef} style=${{display:'none'}}/><div style=${{display:'flex',gap:14,marginTop:14,justifyContent:'center'}}><button onClick=${()=>capPhoto(curAr,cq)} style=${{background:C.pass+'33',color:C.pass,border:`2px solid ${C.pass}`,borderRadius:8,padding:'14px 28px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>📸 CAPTURE</button><button onClick=${stopCam} style=${{background:C.fail+'33',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'14px 20px',fontFamily:mono,fontWeight:700,cursor:'pointer'}}>✕</button></div></div></div>`:''}
     ${vRec?html`<div class="overlay"><div style=${{textAlign:'center',width:'100%',maxWidth:480}}><div style=${{display:'inline-flex',alignItems:'center',gap:8,background:C.fail+'22',border:`2px solid ${C.fail}`,borderRadius:6,padding:'6px 14px',marginBottom:10,fontFamily:mono,fontSize:12,color:C.fail}}><span class="blink" style=${{width:10,height:10,borderRadius:'50%',background:C.fail,display:'inline-block'}}/>⏺ RECORDING…</div><video ref=${vvRef} autoPlay playsinline muted style=${{width:'100%',borderRadius:8}}/><div style=${{display:'flex',gap:14,marginTop:14,justifyContent:'center'}}><button onClick=${stopVid} style=${{background:C.fail+'33',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'14px 28px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>⏹ STOP & SAVE</button></div></div></div>`:''}
     <div style=${{maxWidth:600,margin:'0 auto',padding:16}}>
-      <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,marginBottom:14}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style=${{color:ACLR[curAr],fontFamily:mono,fontSize:11,fontWeight:700}}>${curAr}</span><button onClick=${()=>{setStep('areas');setQi(0);}} style=${{background:'transparent',color:C.muted,border:'none',fontFamily:mono,fontSize:10,cursor:'pointer'}}>← AREAS</button></div><div style=${{color:C.muted,fontSize:11,marginBottom:8}}>${info.site} · Week ${info.week} · ${info.auditor}</div><${PBar} v=${((qi+1)/qs.length)*100} color=${ACLR[curAr]}/><div style=${{color:C.muted,fontSize:10,marginTop:4,textAlign:'right',fontFamily:mono}}>Q${qi+1}/${qs.length}</div></div>
+      <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,marginBottom:14}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style=${{color:ACLR[curAr],fontFamily:mono,fontSize:11,fontWeight:700}}>${curAr}</span><button onClick=${()=>{setStep('areas');setQi(0);}} style=${{background:'rgba(245,158,11,.15)',color:C.accent,border:`2px solid ${C.accent}66`,fontFamily:mono,fontSize:12,fontWeight:700,cursor:'pointer',padding:'5px 14px',borderRadius:6,letterSpacing:.6}}>☰ AREAS</button></div><div style=${{color:C.muted,fontSize:11,marginBottom:8}}>${info.site} · Week ${info.week} · ${info.auditor}</div><${PBar} v=${((qi+1)/qs.length)*100} color=${ACLR[curAr]}/><div style=${{color:C.muted,fontSize:10,marginTop:4,textAlign:'right',fontFamily:mono}}>Q${qi+1}/${qs.length}</div></div>
       <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:20,marginBottom:14}} class="fi">
         <div style=${{color:C.text,fontSize:15,fontWeight:500,lineHeight:1.6,marginBottom:20,minHeight:54}}>${cq}</div>
         <div style=${{display:'flex',gap:10,marginBottom:16}}>${['PASS','FAIL','NA'].map(opt=>{const col=opt==='PASS'?C.pass:opt==='FAIL'?C.fail:C.na;const sel=ca.answer===opt;return html`<button key=${opt} onClick=${()=>setFld(curAr,cq,'answer',opt)} style=${{flex:1,background:sel?col+'33':'transparent',color:col,border:`2px solid ${sel?col:col+'55'}`,borderRadius:6,padding:'14px 0',fontSize:13,fontFamily:mono,fontWeight:sel?700:400,cursor:'pointer'}}>${opt==='PASS'?'✓ PASS':opt==='FAIL'?'✗ FAIL':'— NA'}</button>`;})}</div>
@@ -742,7 +743,7 @@ function FillScorecard({onBack}){
       </div>
     </div>
   </div>`;
-  if(step==='areas')return html`<div style=${{minHeight:'100vh',background:C.bg}}><div style=${{maxWidth:600,margin:'0 auto',padding:16}}><div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:16,marginBottom:20}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style=${{fontFamily:mono,fontSize:16,fontWeight:700,color:C.text}}>${info.site}</div><div style=${{color:C.muted,fontSize:12,marginTop:4}}>Week ${info.week} · ${info.auditor}</div></div><button onClick=${onBack} style=${{background:'transparent',color:C.muted,border:'none',fontFamily:mono,fontSize:10,cursor:'pointer'}}>← HOME</button></div><div style=${{marginTop:14}}><${PBar} v=${(doneAr.length/AREAS.length)*100} color=${C.pass}/><div style=${{color:C.muted,fontSize:11,marginTop:5,fontFamily:mono}}>${doneAr.length}/${AREAS.length} areas completed</div></div></div>
+  if(step==='areas')return html`<div style=${{minHeight:'100vh',background:C.bg}}><div style=${{maxWidth:600,margin:'0 auto',padding:16}}><div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:16,marginBottom:20}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style=${{fontFamily:mono,fontSize:16,fontWeight:700,color:C.text}}>${info.site}</div><div style=${{color:C.muted,fontSize:12,marginTop:4}}>Week ${info.week} · ${info.auditor}</div></div><button onClick=${onBack} style=${{background:'rgba(245,158,11,.15)',color:C.accent,border:`2px solid ${C.accent}66`,fontFamily:mono,fontSize:13,fontWeight:700,cursor:'pointer',padding:'7px 18px',borderRadius:8,letterSpacing:.8}}>⌂ HOME</button></div><div style=${{marginTop:14}}><${PBar} v=${(doneAr.length/AREAS.length)*100} color=${C.pass}/><div style=${{color:C.muted,fontSize:11,marginTop:5,fontFamily:mono}}>${doneAr.length}/${AREAS.length} areas completed</div></div></div>
   <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:12}}>SELECT AREA TO AUDIT</div>
   ${AREAS.map(ar=>{const done=doneAr.includes(ar);return html`<button key=${ar} onClick=${()=>{if(!done){setCurAr(ar);setStep('questions');setQi(0);}}} disabled=${done} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',background:done?C.pass+'0f':C.card,border:`1px solid ${done?C.pass+'44':C.border}`,borderRadius:10,padding:'16px 20px',marginBottom:10,color:done?C.pass:C.text,cursor:done?'default':'pointer',textAlign:'left'}}><div><div style=${{fontFamily:mono,fontSize:13,fontWeight:done?700:400}}>${ar}</div><div style=${{color:C.muted,fontSize:11,marginTop:4}}>${QS[ar].length} questions</div></div><span style=${{fontSize:20,color:done?C.pass:ACLR[ar]}}>${done?'✓':'→'}</span></button>`;})}
   ${doneAr.length===AREAS.length?html`<button onClick=${submitAll} style=${{width:'100%',background:C.pass+'22',color:C.pass,border:`2px solid ${C.pass}`,borderRadius:8,padding:'16px 0',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:12,letterSpacing:.8}}>✓ SUBMIT ALL — RECORD RESPONSE</button>`:''}
@@ -804,8 +805,9 @@ function generateEmailReport(records,activeWeeks,displayWeek,downloadOnly=false)
   const htmlBody=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Collated Audit Report — ${fmtW(displayWeek)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;font-size:11px;background:#f8fafc;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.wrap{max-width:1200px;margin:0 auto;padding:24px}
+body{font-family:Arial,sans-serif;font-size:11px;background:#e8ecf0;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page-border{max-width:1260px;margin:24px auto;padding:3px;background:linear-gradient(135deg,#334155,#f59e0b,#334155);border-radius:12px}
+.wrap{max-width:100%;margin:0;padding:28px 32px;background:#fff;border-radius:10px}
 .hdr{background:linear-gradient(135deg,#1e293b,#334155);color:#fff;padding:28px 32px;border-radius:8px;margin-bottom:28px}
 .hdr h1{font-size:22px;font-weight:800;letter-spacing:-0.5px;margin-bottom:6px}
 .hdr .sub{color:#94a3b8;font-size:12px}
@@ -836,18 +838,24 @@ td.na-q{color:#94a3b8}
 .area-row{margin-bottom:16px;border-bottom:1px solid #f1f5f9;padding-bottom:14px}
 .area-row:last-child{border-bottom:none;padding-bottom:0}
 .area-name{font-size:11px;font-weight:700;letter-spacing:.6px;margin-bottom:8px}
-.fail-item{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #fff1f2;align-items:flex-start}
+.fail-item{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #fff1f2;align-items:flex-start}
 .fail-item:last-child{border-bottom:none}
-.fail-label{color:#991b1b;font-weight:700;font-size:11px;line-height:1.4}
-.fail-remark{color:#d97706;font-size:10px;margin-top:3px;font-style:italic}
+.fail-sentence{color:#991b1b;font-weight:600;font-size:11px;line-height:1.5}
+.fail-sentence .remark-inline{color:#92400e;font-weight:400;font-style:italic}
 .media-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:flex-start}
 .media-img{width:110px;height:75px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;cursor:pointer}
 .media-vid{width:110px;height:75px;border-radius:4px;border:1px solid #334155;background:#0f172a;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;text-decoration:none;color:#93c5fd;font-size:22px}
 .area-score-grid{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .area-score-chip{border-radius:4px;padding:4px 10px;font-size:10px;font-weight:700;border:1px solid}
 .footer{margin-top:40px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:10px;text-align:center}
-@media print{.section-title{page-break-before:auto}.dc-section{page-break-inside:avoid}.wrap{padding:12px}}
-</style></head><body><div class="wrap">
+@media print{
+  body{background:#fff}
+  .page-border{margin:0;padding:0;background:none;border-radius:0}
+  .wrap{padding:16px}
+  .section-title{page-break-before:auto}
+  .dc-section{page-break-inside:avoid}
+}
+</style></head><body><div class="page-border"><div class="wrap">
 <div class="hdr"><h1>📋 WEEKLY AUDIT SCORECARD — COLLATED REPORT</h1><p class="sub">Week ${fmtW(displayWeek)} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-IN')} &nbsp;|&nbsp; ${wRecs.length} DCs audited of ${SITES.length} total</p></div>
 
 <div class="section-title">A. OVERALL NETWORK PERFORMANCE — ${fmtW(displayWeek)}</div>
@@ -891,8 +899,7 @@ ${!hasFails?'<p style="color:#16a34a;font-size:11px;font-weight:600;padding:8px 
 ${dc.areas.filter(a=>a.fails.length>0).map(a=>`<div class="area-row">
 <div class="area-name" style="color:${ACLR[a.area]}">${a.area}</div>
 ${a.fails.map(f=>`<div class="fail-item"><div style="flex:1">
-<div class="fail-label">✗ ${f.neg}</div>
-${f.remark?`<div class="fail-remark">📝 ${f.remark}</div>`:''}
+<div class="fail-sentence">✗ ${f.neg}${f.remark?` <span class="remark-inline">(Remark: ${f.remark})</span>`:''}</div>
 ${(f.imgs.length>0||f.vids.length>0)?`<div class="media-row">
 ${f.imgs.map(u=>`<img class="media-img" src="${u}" loading="lazy" alt="evidence"/>`).join('')}
 ${f.vids.map((u,vi)=>{const resolved=u.includes('drive.google.com')?u.replace('/view','/preview').replace('/open','/preview'):(u.startsWith('http')?u:'');return resolved?`<a class="media-vid" href="${resolved}" target="_blank" title="Open video">🎥<span style="font-size:9px">VIDEO ${vi+1}</span></a>`:'';}).join('')}
@@ -901,7 +908,7 @@ ${f.vids.map((u,vi)=>{const resolved=u.includes('drive.google.com')?u.replace('/
 </div>`).join('')}
 </div></div>`;}).join('')}
 <div class="footer">Weekly Audit Scorecard System · Report generated: ${new Date().toLocaleString('en-IN')} · Week ${fmtW(displayWeek)}</div>
-</div></body></html>`;
+</div></div></body></html>`;
 
   if(downloadOnly){
     // ── Direct file download (no popup) ──
@@ -1152,14 +1159,17 @@ function DCDetailTab({records,week,site,setSite}){
           :fails.map((f,i)=>html`<div key=${i} style=${{background:C.fail+'06',border:`1px solid ${C.fail}18`,borderRadius:8,padding:14,marginBottom:10}}>
             <div style=${{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
               <div style=${{flex:1,minWidth:180}}>
-                <div style=${{display:'flex',gap:8,alignItems:'flex-start',marginBottom:6}}>
-                  <span style=${{color:C.fail,fontSize:16,lineHeight:1.2,flexShrink:0}}>✗</span>
+                <div style=${{display:'flex',gap:8,alignItems:'flex-start',marginBottom:f.remark?6:0}}>
+                  <span style=${{color:C.fail,fontSize:16,lineHeight:1.3,flexShrink:0,marginTop:1}}>✗</span>
                   <div>
                     <div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.neg}</div>
-                    <div style=${{color:C.muted,fontSize:9,marginTop:2,fontFamily:mono}}>${f.area}</div>
+                    <div style=${{color:C.muted,fontSize:9,marginTop:2,fontFamily:mono,letterSpacing:.4}}>${f.area}</div>
                   </div>
                 </div>
-                ${f.remark?html`<div style=${{background:'rgba(234,179,8,.06)',border:`1px solid rgba(234,179,8,.2)`,borderRadius:4,padding:'5px 10px',color:'#fbbf24',fontSize:11,marginTop:4}}>📝 ${f.remark}</div>`:''}
+                ${f.remark?html`<div style=${{marginLeft:24,marginTop:4,paddingLeft:10,borderLeft:`2px solid #fbbf2466`,color:'#fbbf24',fontSize:11,lineHeight:1.5,fontStyle:'italic'}}>
+                  <span style=${{color:C.muted,fontSize:9,fontFamily:mono,fontStyle:'normal',display:'block',marginBottom:1,letterSpacing:.4}}>REMARK</span>
+                  ${f.remark}
+                </div>`:''}
               </div>
               ${/* ── Media column — images + videos beside improvement area ── */null}
               ${(f.imgs.length>0||f.vids.length>0)?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',flexShrink:0,alignItems:'flex-start'}}>
