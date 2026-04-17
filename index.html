@@ -314,15 +314,28 @@ function _jsonp(url){
 
 async function fetchSheet(force=false){
   if(!sheetOK())return{ok:false,records:[],error:'Apps Script URL not configured.'};
-  if(!force&&_cache.data&&(Date.now()-_cache.ts<CACHE_TTL))return _cache.data;
-  const result=await _jsonp(SHEET_URL+'?action=get');
-  if(result.ok){
-    // Only strip the legacy test weeks — show ALL other rows including base-sheet data
-    const PURGE=new Set([12,13,14,15,16]);
-    result.records=(result.records||[]).filter(r=>!PURGE.has(Number(r['Week_No'])));
-    _cache.data=result;_cache.ts=Date.now();
+  // Serve in-memory cache only on non-forced calls within the TTL window
+  if(!force&&_cache.data&&(Date.now()-_cache.ts<CACHE_TTL)){
+    console.log('[fetchSheet] Serving from in-memory cache (',_cache.records?.length||_cache.data.records?.length||0,'records)');
+    return _cache.data;
   }
-  return result;
+  // Pass bust=1 when forcing so Apps Script also skips its CacheService
+  const url=SHEET_URL+'?action=get'+(force?'&bust=1':'');
+  try{
+    const result=await _jsonp(url);
+    if(result.ok){
+      const PURGE=new Set([12,13,14,15,16]);
+      result.records=(result.records||[]).filter(r=>!PURGE.has(Number(r['Week_No'])));
+      _cache.data=result;_cache.ts=Date.now();
+      console.log('[fetchSheet] Fetched',result.records.length,'records from Apps Script');
+    }else{
+      console.error('[fetchSheet] Apps Script error:',result.error);
+    }
+    return result;
+  }catch(e){
+    console.error('[fetchSheet] JSONP failed:',e.message);
+    throw e;
+  }
 }
 
 // ════════════════════════════════════════════════════════
@@ -945,7 +958,7 @@ function FillScorecard({onBack}){
       const a=getA(ar,q)||{answer:'NA',remark:'',images:[],videos:[]};
       const imgURLs=[],vidURLs=[];
       for(const img of(a.images||[])){
-        try{const u=await uploadMedia(img,'image');if(u)imgURLs.push(u);}catch(e){console.warn('img:',e);}
+        try{const u=await uploadMedia(img,'image');if(u)imgURLs.push(u);}catch(e){console.warn('img upload:',e);}
         uploaded++;setUpP({done:uploaded,total:totalMedia,phase:'uploading'});
       }
       for(const vid of(a.videos||[])){
@@ -953,7 +966,7 @@ function FillScorecard({onBack}){
           const src=vid.blob||vid.file||vid.url;
           if(cloudOK()){const u=await uploadToCloud(src,'video');if(u)vidURLs.push(u);}
           else{const d=await vidSrcToBase64(src);if(d)vidURLs.push(d);}
-        }catch(e){console.warn('vid:',e);}
+        }catch(e){console.warn('vid upload:',e);}
         uploaded++;setUpP({done:uploaded,total:totalMedia,phase:'uploading'});
       }
       processed[q]={answer:a.answer||'NA',remark:a.remark||'',imageURLs:imgURLs,videoURLs:vidURLs};
@@ -963,12 +976,15 @@ function FillScorecard({onBack}){
     setUpP(p=>({...p,phase:'submitting'}));
     try{
       await saveSectionToSheet(submissionId,info,ar,processed,areaScore);
+      // Bust the frontend cache so dashboard shows fresh data immediately
+      _cache.data=null;_cache.ts=0;
       setAns(prev=>({...prev,[ar]:processed}));
       setDoneAr(prev=>[...prev.filter(x=>x!==ar),ar]);
       setUpP({done:0,total:0,phase:''});setSavingSection(false);
       setStep('areas');setQi(0);setCurAr(null);
     }catch(e){
       setUpP({done:0,total:0,phase:''});setSavingSection(false);
+      console.error('[saveSectionFn]',e);
       alert('Section save failed: '+e.message+'\nAnswers are preserved — please retry.');
     }
   };
@@ -984,8 +1000,14 @@ function FillScorecard({onBack}){
     const score=tot>0?Math.round(pass/tot*100):0;
     try{
       await finalSubmitToSheet(submissionId,info,ans,areaScores,score);
+      // Bust the frontend cache so dashboard shows fresh data immediately
+      _cache.data=null;_cache.ts=0;
       setUpP({done:0,total:0,phase:''});setStep('done');
-    }catch(e){setUpP({done:0,total:0,phase:''});setErrMsg(e.message||'Submit failed.');setStep('error');}
+    }catch(e){
+      setUpP({done:0,total:0,phase:''});
+      console.error('[doFinalSubmit]',e);
+      setErrMsg(e.message||'Submit failed.');setStep('error');
+    }
   };
 
   const qs=curAr?QS[curAr]:[];const cq=qs[qi]||'';const ca=getA(curAr,cq);
@@ -1702,25 +1724,36 @@ function Dashboard({onBack}){
     if(activeWeeks.length>0&&(selWeek===null||!activeWeeks.includes(selWeek)))setSelWeek(activeWeeks[activeWeeks.length-1]);
   },[JSON.stringify(activeWeeks)]);
 
+  // Always force-fetch on mount so the latest data is shown immediately.
+  // Background auto-refresh every 5 minutes keeps it current without user action.
   const load=useCallback(async(force=false)=>{
-    // Bug-fix: on force-refresh show spinner, don't flash stale data
-    if(force){setBgLoading(true);}
-    else if(_cache.data&&_cache.data.ok){
-      // Serve cache immediately for instant paint while re-fetching in background
-      setRecords(_cache.data.records||[]);setLoading(false);
-      setBgLoading(true);// indicate background refresh
-    }else{
+    // First call (mount): always show spinner + hit the network.
+    // Refresh button / interval: show bgLoading spinner, keep old records visible.
+    if(records.length===0){
       setLoading(true);
+    }else{
+      setBgLoading(true);
     }
     setError('');
     try{
-      const r=await fetchSheet(force);
-      if(r.ok){setRecords(r.records||[]);setLastSync(new Date());}
-      else setError(r.error||'Fetch failed — check Apps Script deployment');
-    }catch(e){setError(e.message);}
-    setLoading(false);setBgLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);// intentionally empty — fetchSheet is module-level and stable
+      const r=await fetchSheet(true);// always bypass frontend cache — get freshest data
+      if(r.ok){
+        console.log('[Dashboard] Loaded',r.records?.length||0,'records from sheet');
+        setRecords(r.records||[]);
+        setLastSync(new Date());
+      }else{
+        const msg=r.error||'Apps Script returned ok:false';
+        console.error('[Dashboard] Fetch error:',msg);
+        setError(msg);
+      }
+    }catch(e){
+      console.error('[Dashboard] Fetch exception:',e.message);
+      setError(e.message);
+    }finally{
+      setLoading(false);
+      setBgLoading(false);
+    }
+  },[records.length]);
 
   useEffect(()=>{load();const iv=setInterval(()=>load(true),5*60*1000);return()=>clearInterval(iv);},[]);
 
