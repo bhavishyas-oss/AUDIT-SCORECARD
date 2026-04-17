@@ -314,22 +314,23 @@ function _jsonp(url){
 
 async function fetchSheet(force=false){
   if(!sheetOK())return{ok:false,records:[],error:'Apps Script URL not configured.'};
-  // Serve in-memory cache only on non-forced calls within the TTL window
   if(!force&&_cache.data&&(Date.now()-_cache.ts<CACHE_TTL)){
-    console.log('[fetchSheet] Serving from in-memory cache (',_cache.records?.length||_cache.data.records?.length||0,'records)');
+    console.log('[fetchSheet] cache hit —',(_cache.data.records||[]).length,'records');
     return _cache.data;
   }
-  // Pass bust=1 when forcing so Apps Script also skips its CacheService
+  // bust=1 tells Apps Script to bypass its own CacheService too
   const url=SHEET_URL+'?action=get'+(force?'&bust=1':'');
   try{
     const result=await _jsonp(url);
     if(result.ok){
-      const PURGE=new Set([12,13,14,15,16]);
-      result.records=(result.records||[]).filter(r=>!PURGE.has(Number(r['Week_No'])));
+      // ── NO WEEK FILTERING HERE ──
+      // All weeks in the sheet are real data. Never purge on the client.
+      // The admin-only purgeOldWeeks() function handles any cleanup needed.
+      result.records=result.records||[];
       _cache.data=result;_cache.ts=Date.now();
-      console.log('[fetchSheet] Fetched',result.records.length,'records from Apps Script');
+      console.log('[fetchSheet] fetched',result.records.length,'records');
     }else{
-      console.error('[fetchSheet] Apps Script error:',result.error);
+      console.error('[fetchSheet] error:',result.error);
     }
     return result;
   }catch(e){
