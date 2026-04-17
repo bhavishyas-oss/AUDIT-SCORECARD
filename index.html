@@ -78,7 +78,7 @@ if(window.Chart&&window.ChartDataLabels)window.Chart.register(window.ChartDataLa
 // ════════════════════════════════════════════════════════
 //  ⚙  CONFIG
 // ════════════════════════════════════════════════════════
-const SHEET_URL='https://script.google.com/macros/s/AKfycbwZn8WNN80h0R01HcasMFbYzCQBmpeWhaPJVBVIWELsGlmVVEYLROX_16TY50R7xjaH/exec';
+const SHEET_URL='https://script.google.com/macros/s/AKfycbwCFlek--4W1hQnv3O25D4Zzj2Q6ecuXyig2qpsx7D6C1FavNqZ1etPCakbQHI3Qm8U/exec';
 const CL_CLOUD ='YOUR_CLOUDINARY_CLOUD_NAME';
 const CL_PRESET='YOUR_UNSIGNED_UPLOAD_PRESET';
 
@@ -314,18 +314,12 @@ function _jsonp(url){
 
 async function fetchSheet(force=false){
   if(!sheetOK())return{ok:false,records:[],error:'Apps Script URL not configured.'};
-  // Bug-fix: when force=true skip the cache entirely — don't show stale data first
   if(!force&&_cache.data&&(Date.now()-_cache.ts<CACHE_TTL))return _cache.data;
   const result=await _jsonp(SHEET_URL+'?action=get');
   if(result.ok){
-    const PURGE_WEEKS=new Set([12,13,14,15,16]);
-    result.records=(result.records||[]).filter(r=>{
-      if(PURGE_WEEKS.has(Number(r['Week_No'])))return false;
-      // Only Complete records in KPI dashboard; legacy rows without Status column pass through
-      const st=String(r['Status']||'').trim();
-      if(st&&st!=='Complete')return false;
-      return true;
-    });
+    // Only strip the legacy test weeks — show ALL other rows including base-sheet data
+    const PURGE=new Set([12,13,14,15,16]);
+    result.records=(result.records||[]).filter(r=>!PURGE.has(Number(r['Week_No'])));
     _cache.data=result;_cache.ts=Date.now();
   }
   return result;
