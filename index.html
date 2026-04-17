@@ -210,8 +210,26 @@ async function uploadMedia(src,type='image'){
 
 async function postToSheet(payload){
   if(!sheetOK())throw new Error('Apps Script URL not configured.');
-  try{await fetch(SHEET_URL,{method:'POST',mode:'no-cors',body:JSON.stringify(payload)});return{ok:true};}
-  catch(e){throw new Error('Network error: '+e.message);}
+  // no-cors POST: response is always opaque — we can't read it.
+  // Fire up to 3 times with exponential back-off to guard against dropped requests.
+  const body=JSON.stringify(payload);
+  let lastErr=null;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      await fetch(SHEET_URL,{
+        method:'POST',
+        mode:'no-cors',
+        // Content-Type text/plain avoids CORS preflight while still sending the body
+        headers:{'Content-Type':'text/plain;charset=UTF-8'},
+        body
+      });
+      return{ok:true};// opaque response — assume success if no network error
+    }catch(e){
+      lastErr=e;
+      if(attempt<2)await new Promise(r=>setTimeout(r,1000*(attempt+1)));
+    }
+  }
+  throw new Error('Network error after 3 attempts: '+(lastErr?.message||'unknown'));
 }
 
 // ── Login via credential sheet ──
@@ -223,65 +241,88 @@ async function doLogin(uid,pwd){
 // ── Fetch existing record for resume ──
 async function fetchRecord(site,week,auditor){
   if(!sheetOK())return{ok:true,record:null};
-  return _jsonp(`${SHEET_URL}?action=getRecord&site=${encodeURIComponent(site)}&week=${week}&auditor=${encodeURIComponent(auditor)}&_t=${Date.now()}`);
+  return _jsonp(`${SHEET_URL}?action=getRecord&site=${encodeURIComponent(site)}&week=${week}&auditor=${encodeURIComponent(auditor)}`);
 }
 
 // ── Fetch partial entries ──
 async function fetchPartials(){
   if(!sheetOK())return{ok:true,records:[]};
-  return _jsonp(`${SHEET_URL}?action=getPartials&_t=${Date.now()}`);
+  return _jsonp(`${SHEET_URL}?action=getPartials`);
 }
 
-// ── Build a stable session ID from site+week+auditor ──
+// ── Build a stable, collision-resistant session ID ──
+// Lower-case auditor so same person with different caps gets same ID
 function makeSessionId(site,week,auditor){
-  const key=[site,week,String(auditor)].join('_').replace(/[^a-zA-Z0-9_]/g,'').slice(0,30);
-  return 'SES-'+key+'-'+String(week);
+  const key=[
+    String(site).trim().toUpperCase().replace(/\s+/g,''),
+    String(week),
+    String(auditor).trim().toLowerCase().replace(/\s+/g,'')
+  ].join('_').replace(/[^a-zA-Z0-9_]/g,'').slice(0,40);
+  return 'SES-'+key;
 }
 
-// ── Section save (fires and forgets via no-cors POST) ──
+// ── Section save ──
 async function saveSectionToSheet(submissionId,info,area,sectionAnswers,areaScore){
-  return postToSheet({action:'saveSection',submissionId,
-    site:info.site,week:parseInt(info.week),date:info.date,auditor:info.auditor,
-    area,answers:{[area]:sectionAnswers},areaScore});
+  return postToSheet({
+    action:'saveSection',
+    submissionId,
+    site:info.site,
+    week:parseInt(info.week,10),
+    date:String(info.date),
+    auditor:info.auditor,
+    area,
+    answers:{[area]:sectionAnswers},// { "AREA NAME": { "Question text": {answer,remark,imageURLs,videoURLs} } }
+    areaScore
+  });
 }
 
 // ── Final submit ──
 async function finalSubmitToSheet(submissionId,info,allAnswers,areaScores,score){
-  return postToSheet({action:'finalSubmit',submissionId,
-    site:info.site,week:parseInt(info.week),date:info.date,auditor:info.auditor,
-    score,areaScores,answers:allAnswers});
+  return postToSheet({
+    action:'finalSubmit',
+    submissionId,
+    site:info.site,
+    week:parseInt(info.week,10),
+    date:String(info.date),
+    auditor:info.auditor,
+    score,
+    areaScores,
+    answers:allAnswers
+  });
 }
 
-// ── Fetch with in-memory cache for speed ──
+// ── In-memory cache ──
 const _cache={data:null,ts:0};
-const CACHE_TTL=60000;// 60s — serve stale while refreshing
+const CACHE_TTL=60000;// 60 s
 
+// ── JSONP transport (bypasses CORS for GET) ──
+// Bug-fix: _t is added only ONCE (in the appended query, not in the original URL)
 function _jsonp(url){
   return new Promise((res,rej)=>{
-    const cb='_gs_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    const cb='_gs_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);
     const tag=document.createElement('script');
-    const t=setTimeout(()=>{cleanup();rej(new Error('Timed out after 15s.\nVerify Apps Script deploy: Execute as Me, Access: Anyone'));},15000);
+    const t=setTimeout(()=>{cleanup();rej(new Error('Timed out — verify Apps Script: Execute as Me, Access: Anyone'));},15000);
     const cleanup=()=>{clearTimeout(t);try{delete window[cb];}catch(_){}tag.parentNode?.removeChild(tag);};
     window[cb]=data=>{cleanup();res(data);};
-    tag.src=url+(url.includes('?')?'&':'?')+'callback='+cb+'&_t='+Date.now();
-    tag.onerror=()=>{cleanup();rej(new Error('Cannot reach Apps Script.\nDeploy → Web App → Access: Anyone'));};
+    // Append callback + cache-bust once, cleanly
+    const sep=url.includes('?')?'&':'?';
+    tag.src=url+sep+'callback='+cb+'&_cb='+Date.now();
+    tag.onerror=()=>{cleanup();rej(new Error('Cannot reach Apps Script. Check deployment URL.'));};
     document.head.appendChild(tag);
   });
 }
 
 async function fetchSheet(force=false){
   if(!sheetOK())return{ok:false,records:[],error:'Apps Script URL not configured.'};
-  // Return cache immediately if fresh enough
-  if(!force&&_cache.data&&Date.now()-_cache.ts<CACHE_TTL)return _cache.data;
+  // Bug-fix: when force=true skip the cache entirely — don't show stale data first
+  if(!force&&_cache.data&&(Date.now()-_cache.ts<CACHE_TTL))return _cache.data;
   const result=await _jsonp(SHEET_URL+'?action=get');
   if(result.ok){
-    // Remove legacy weeks (12-16) at fetch time — never shown anywhere
     const PURGE_WEEKS=new Set([12,13,14,15,16]);
-    // Only Complete records shown in KPI dashboard (Partial records excluded)
     result.records=(result.records||[]).filter(r=>{
       if(PURGE_WEEKS.has(Number(r['Week_No'])))return false;
+      // Only Complete records in KPI dashboard; legacy rows without Status column pass through
       const st=String(r['Status']||'').trim();
-      // If Status column exists and is set, only include Complete; if column missing (legacy), include all
       if(st&&st!=='Complete')return false;
       return true;
     });
@@ -1668,18 +1709,24 @@ function Dashboard({onBack}){
   },[JSON.stringify(activeWeeks)]);
 
   const load=useCallback(async(force=false)=>{
-    // If cache available, show it immediately (no spinner) while refreshing in background
-    if(!force&&_cache.data&&_cache.data.ok){setRecords(_cache.data.records||[]);setLoading(false);}
-    else if(!_cache.data)setLoading(true);
-    else setBgLoading(true);
+    // Bug-fix: on force-refresh show spinner, don't flash stale data
+    if(force){setBgLoading(true);}
+    else if(_cache.data&&_cache.data.ok){
+      // Serve cache immediately for instant paint while re-fetching in background
+      setRecords(_cache.data.records||[]);setLoading(false);
+      setBgLoading(true);// indicate background refresh
+    }else{
+      setLoading(true);
+    }
     setError('');
     try{
       const r=await fetchSheet(force);
       if(r.ok){setRecords(r.records||[]);setLastSync(new Date());}
-      else setError(r.error||'Fetch returned ok:false');
+      else setError(r.error||'Fetch failed — check Apps Script deployment');
     }catch(e){setError(e.message);}
     setLoading(false);setBgLoading(false);
-  },[]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);// intentionally empty — fetchSheet is module-level and stable
 
   useEffect(()=>{load();const iv=setInterval(()=>load(true),5*60*1000);return()=>clearInterval(iv);},[]);
 
