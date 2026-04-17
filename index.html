@@ -214,6 +214,44 @@ async function postToSheet(payload){
   catch(e){throw new Error('Network error: '+e.message);}
 }
 
+// ── Login via credential sheet ──
+async function doLogin(uid,pwd){
+  if(!sheetOK())return{ok:false,error:'Apps Script URL not configured.'};
+  return _jsonp(`${SHEET_URL}?action=login&uid=${encodeURIComponent(uid)}&pwd=${encodeURIComponent(pwd)}`);
+}
+
+// ── Fetch existing record for resume ──
+async function fetchRecord(site,week,auditor){
+  if(!sheetOK())return{ok:true,record:null};
+  return _jsonp(`${SHEET_URL}?action=getRecord&site=${encodeURIComponent(site)}&week=${week}&auditor=${encodeURIComponent(auditor)}&_t=${Date.now()}`);
+}
+
+// ── Fetch partial entries ──
+async function fetchPartials(){
+  if(!sheetOK())return{ok:true,records:[]};
+  return _jsonp(`${SHEET_URL}?action=getPartials&_t=${Date.now()}`);
+}
+
+// ── Build a stable session ID from site+week+auditor ──
+function makeSessionId(site,week,auditor){
+  const key=[site,week,String(auditor)].join('_').replace(/[^a-zA-Z0-9_]/g,'').slice(0,30);
+  return 'SES-'+key+'-'+String(week);
+}
+
+// ── Section save (fires and forgets via no-cors POST) ──
+async function saveSectionToSheet(submissionId,info,area,sectionAnswers,areaScore){
+  return postToSheet({action:'saveSection',submissionId,
+    site:info.site,week:parseInt(info.week),date:info.date,auditor:info.auditor,
+    area,answers:{[area]:sectionAnswers},areaScore});
+}
+
+// ── Final submit ──
+async function finalSubmitToSheet(submissionId,info,allAnswers,areaScores,score){
+  return postToSheet({action:'finalSubmit',submissionId,
+    site:info.site,week:parseInt(info.week),date:info.date,auditor:info.auditor,
+    score,areaScores,answers:allAnswers});
+}
+
 // ── Fetch with in-memory cache for speed ──
 const _cache={data:null,ts:0};
 const CACHE_TTL=60000;// 60s — serve stale while refreshing
@@ -239,7 +277,14 @@ async function fetchSheet(force=false){
   if(result.ok){
     // Remove legacy weeks (12-16) at fetch time — never shown anywhere
     const PURGE_WEEKS=new Set([12,13,14,15,16]);
-    result.records=(result.records||[]).filter(r=>!PURGE_WEEKS.has(Number(r['Week_No'])));
+    // Only Complete records shown in KPI dashboard (Partial records excluded)
+    result.records=(result.records||[]).filter(r=>{
+      if(PURGE_WEEKS.has(Number(r['Week_No'])))return false;
+      const st=String(r['Status']||'').trim();
+      // If Status column exists and is set, only include Complete; if column missing (legacy), include all
+      if(st&&st!=='Complete')return false;
+      return true;
+    });
     _cache.data=result;_cache.ts=Date.now();
   }
   return result;
@@ -649,17 +694,178 @@ function Landing({onFill,onView}){
 // ════════════════════════════════════════════════════════
 //  FILL SCORECARD  — UNCHANGED (DO NOT MODIFY)
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  LOGIN PAGE — authenticates via Credential Google Sheet
+// ════════════════════════════════════════════════════════
+function LoginPage({onSuccess,onBack}){
+  const[uid,setUid]=useState('');
+  const[pwd,setPwd]=useState('');
+  const[loading,setLoading]=useState(false);
+  const[err,setErr]=useState('');
+
+  const submit=async()=>{
+    if(!uid.trim()||!pwd.trim()){setErr('Please enter both User ID and Password.');return;}
+    setLoading(true);setErr('');
+    try{
+      const r=await doLogin(uid.trim(),pwd.trim());
+      if(r&&r.ok){onSuccess({uid:uid.trim(),name:r.name||uid.trim(),role:r.role||'Auditor'});}
+      else{setErr((r&&r.error)||'Invalid User ID or Password. Please try again.');}
+    }catch(e){setErr('Connection error: '+e.message+'\nCheck Apps Script deployment.');}
+    setLoading(false);
+  };
+
+  const s={
+    page:{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',padding:24},
+    box:{width:'100%',maxWidth:420},
+    logo:{textAlign:'center',marginBottom:32},
+    logoInner:{display:'inline-block',background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:'20px 36px',marginBottom:20},
+    logoText:{fontFamily:mono,fontSize:11,color:C.muted,letterSpacing:3,marginTop:8},
+    panel:{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:28},
+    heading:{textAlign:'center',marginBottom:22},
+    h2:{fontFamily:mono,fontSize:18,fontWeight:700,color:C.text,marginBottom:4},
+    sub:{color:C.muted,fontSize:12},
+    field:{marginBottom:18},
+    label:{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,display:'block',marginBottom:8},
+    inp:{width:'100%',background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 14px',fontSize:14,outline:'none'},
+    err:{background:C.fail+'18',border:`1px solid ${C.fail}33`,borderRadius:8,padding:'10px 14px',color:C.fail,fontSize:12,marginBottom:16,lineHeight:1.5},
+    btn:{width:'100%',background:loading?C.border:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'15px 0',fontSize:15,fontFamily:mono,fontWeight:700,cursor:loading?'default':'pointer',letterSpacing:1},
+    back:{width:'100%',background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 0',fontFamily:mono,fontSize:12,cursor:'pointer',marginTop:10},
+  };
+
+  return html`<div style=${s.page}>
+    <div style=${s.box} class="fi">
+      <div style=${s.logo}>
+        <div style=${s.logoInner}>
+          <div style=${{fontFamily:mono,fontSize:28,fontWeight:800,color:C.text,letterSpacing:-1}}>SHADOWFAX</div>
+          <div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginTop:4}}>
+            <div style=${{width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'14px solid #a3c21a'}}/>
+            <div style=${{color:'#a3c21a',fontFamily:mono,fontSize:11,fontStyle:'italic',fontWeight:700}}>Think ahead!</div>
+          </div>
+        </div>
+        <div style=${s.logoText}>AUDIT MANAGEMENT SYSTEM</div>
+      </div>
+      <div style=${s.panel}>
+        <div style=${s.heading}>
+          <div style=${s.h2}>FILL SCORECARD</div>
+          <div style=${s.sub}>Sign in to continue</div>
+        </div>
+        <div style=${s.field}>
+          <label style=${s.label}>USER ID</label>
+          <input style=${s.inp} type="text" placeholder="Enter your user ID" value=${uid}
+            onInput=${e=>setUid(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&submit()}
+            onFocus=${e=>e.target.style.borderColor=C.accent} onBlur=${e=>e.target.style.borderColor=C.border}/>
+        </div>
+        <div style=${s.field}>
+          <label style=${s.label}>PASSWORD</label>
+          <input style=${s.inp} type="password" placeholder="Enter your password" value=${pwd}
+            onInput=${e=>setPwd(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&submit()}
+            onFocus=${e=>e.target.style.borderColor=C.accent} onBlur=${e=>e.target.style.borderColor=C.border}/>
+        </div>
+        ${err?html`<div style=${s.err}>${err}</div>`:''}
+        <button style=${s.btn} onClick=${submit} disabled=${loading}>
+          ${loading?html`<span class="spin">↻</span> SIGNING IN…`:'SIGN IN →'}
+        </button>
+        <button style=${s.back} onClick=${onBack}>← BACK TO HOME</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ════════════════════════════════════════════════════════
+//  PARTIAL ENTRIES VIEW
+// ════════════════════════════════════════════════════════
+function PartialEntriesView({onBack}){
+  const[records,setRecords]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[err,setErr]=useState('');
+
+  useEffect(()=>{
+    fetchPartials().then(r=>{
+      if(r&&r.ok)setRecords(r.records||[]);
+      else setErr((r&&r.error)||'Failed to load partial entries');
+      setLoading(false);
+    }).catch(e=>{setErr(e.message);setLoading(false);});
+  },[]);
+
+  const AREA_STATUS_KEYS=['IOS_Status','BBB_Status','PSA_Status','SSA_Status','EXC_Status','VOL_Status'];
+  const AREA_LABELS=['IOS','BBB','PSA','SSA','EXC','VOL'];
+
+  return html`<div style=${{minHeight:'100vh',background:C.bg}}>
+    <div style=${{background:C.card,borderBottom:`1px solid ${C.border}`,padding:'14px 24px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <div>
+        <div style=${{color:C.accent,fontFamily:mono,fontSize:9,letterSpacing:2.5,marginBottom:2}}>FILL SCORECARD</div>
+        <div style=${{color:C.text,fontFamily:mono,fontSize:16,fontWeight:700}}>PARTIAL ENTRIES</div>
+      </div>
+      <button onClick=${onBack} style=${{background:C.abl,color:C.accent,border:`1px solid ${C.accent}44`,borderRadius:8,padding:'8px 18px',fontFamily:mono,fontSize:12,fontWeight:700,cursor:'pointer'}}>← BACK</button>
+    </div>
+    <div style=${{padding:24,maxWidth:900,margin:'0 auto'}}>
+      ${loading?html`<div style=${{textAlign:'center',padding:60,color:C.muted,fontFamily:mono}}><span class="spin" style=${{fontSize:22,color:C.accent}}>◎</span><div style=${{marginTop:14}}>Loading partial entries…</div></div>`:''}
+      ${!loading&&err?html`<div style=${{...{background:C.fail+'18',border:`1px solid ${C.fail}33`,borderRadius:8,padding:16,color:C.fail,fontFamily:mono,fontSize:12}}}>${err}</div>`:''}
+      ${!loading&&!err&&records.length===0?html`<div style=${{textAlign:'center',padding:60}}>
+        <div style=${{fontSize:44,opacity:.15,marginBottom:14}}>📋</div>
+        <div style=${{color:C.muted,fontFamily:mono,fontSize:13,fontWeight:700}}>NO PARTIAL ENTRIES FOUND</div>
+        <div style=${{color:C.muted,fontSize:11,marginTop:8}}>All submitted audits are complete.</div>
+      </div>`:''}
+      ${!loading&&records.length>0?html`<div>
+        <div style=${{color:C.muted,fontSize:11,fontFamily:mono,marginBottom:16}}>${records.length} partial entr${records.length===1?'y':'ies'} found</div>
+        ${records.map((r,i)=>{
+          const completedSections=AREA_STATUS_KEYS.filter(k=>{const v=r[k];return v===true||String(v).toLowerCase()==='true';});
+          const pendingSections=AREA_STATUS_KEYS.filter(k=>{const v=r[k];return !(v===true||String(v).toLowerCase()==='true');});
+          return html`<div key=${i} style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:18,marginBottom:12}}>
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:10,marginBottom:14}}>
+              <div>
+                <div style=${{fontFamily:mono,fontSize:16,fontWeight:700,color:C.text,marginBottom:4}}>${r['Site']||'—'}</div>
+                <div style=${{display:'flex',gap:12,flexWrap:'wrap',fontSize:12,color:C.muted}}>
+                  <span>Week ${String(r['Week_No']||'—').padStart(2,'0')}</span>
+                  <span>·</span><span>${r['Audit_Date']||'—'}</span>
+                  <span>·</span><span>${r['Auditor']||'—'}</span>
+                </div>
+              </div>
+              <div style=${{background:'rgba(245,158,11,.15)',color:C.accent,border:`1px solid ${C.accent}44`,borderRadius:6,padding:'4px 12px',fontFamily:mono,fontSize:10,fontWeight:700}}>PARTIAL</div>
+            </div>
+            <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+              ${AREA_STATUS_KEYS.map((k,idx)=>{
+                const done=completedSections.includes(k);
+                return html`<span key=${k} style=${{background:done?C.pass+'18':'rgba(239,68,68,.1)',color:done?C.pass:'#ef4444',border:`1px solid ${done?C.pass+'44':'rgba(239,68,68,.3)'}`,borderRadius:5,padding:'4px 10px',fontFamily:mono,fontSize:10,fontWeight:700}}>
+                  ${done?'✓':'⊙'} ${AREA_LABELS[idx]}
+                </span>`;
+              })}
+            </div>
+            <div style=${{marginTop:12,fontSize:11,color:C.muted}}>
+              <span style=${{color:C.pass}}>✓ ${completedSections.length} saved</span>
+              <span style=${{margin:'0 8px'}}>·</span>
+              <span style=${{color:'#ef4444'}}>⊙ ${pendingSections.length} pending</span>
+            </div>
+          </div>`;
+        })}
+      </div>`:''}
+    </div>
+  </div>`;
+}
+
 function FillScorecard({onBack}){
+  // ── Auth state ────────────────────────────────────────
+  const[user,setUser]=useState(null);
+
+  // ── Form state ────────────────────────────────────────
   const[step,setStep]=useState('info');
   const[info,setInfo]=useState({site:SITES[0],date:new Date().toISOString().slice(0,10),week:weekNum(new Date()),auditor:''});
-  const[doneAr,setDoneAr]=useState([]);const[curAr,setCurAr]=useState(null);const[ans,setAns]=useState({});const[qi,setQi]=useState(0);
+  const[submissionId,setSubmissionId]=useState('');
+  const[doneAr,setDoneAr]=useState([]);
+  const[curAr,setCurAr]=useState(null);
+  const[ans,setAns]=useState({});
+  const[qi,setQi]=useState(0);
+  const[resumeLoading,setResumeLoading]=useState(false);
+  const[savingSection,setSavingSection]=useState(false);
   const[cam,setCam]=useState(false);const[stream,setStream]=useState(null);
   const[vRec,setVRec]=useState(false);const[vStream,setVStream]=useState(null);const[mRec,setMRec]=useState(null);
   const[ann,setAnn]=useState(null);const[upP,setUpP]=useState({done:0,total:0,phase:''});const[errMsg,setErrMsg]=useState('');
   const vRef=useRef(null),cRef=useRef(null),fRef=useRef(null),vfRef=useRef(null),vvRef=useRef(null);
+
   const setFld=(ar,q,f,v)=>setAns(p=>({...p,[ar]:{...(p[ar]||{}),[q]:{...(p[ar]?.[q]||{answer:null,remark:'',images:[],videos:[]}),[f]:v}}}));
   const getA=(ar,q)=>ans[ar]?.[q]||{answer:null,remark:'',images:[],videos:[]};
-  const startCam=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},80);}catch{alert('Camera unavailable — use file upload.');}};
+
+  const startCam=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},80);}catch{alert('Camera unavailable.');}};
   const capPhoto=(ar,q)=>{const el=cRef.current,vd=vRef.current;if(!el||!vd)return;el.width=vd.videoWidth||640;el.height=vd.videoHeight||480;el.getContext('2d').drawImage(vd,0,0);const img=el.toDataURL();if(stream)stream.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);setAnn({src:img,ar,q});};
   const stopCam=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);};
   const startVid=async(ar,q)=>{
@@ -672,59 +878,129 @@ function FillScorecard({onBack}){
   const stopVid=()=>{if(mRec)mRec.rec.stop();};
   const vidFile=(e,ar,q)=>{Array.from(e.target.files).forEach(f=>{const url=URL.createObjectURL(f);setFld(ar,q,'videos',[...getA(ar,q).videos,{url,file:f,name:f.name}]);});e.target.value='';};
   const imgFile=(e,ar,q)=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>setFld(ar,q,'images',[...getA(ar,q).images,ev.target.result]);r.readAsDataURL(f);});e.target.value='';};
-  const submitArea=()=>{const nd=[...doneAr,curAr];setDoneAr(nd);setCurAr(null);setStep('areas');setQi(0);};
-  const submitAll=async()=>{
-    let totalMedia=0;Object.values(ans).forEach(aq=>Object.values(aq).forEach(a=>{totalMedia+=(a.images||[]).length+(a.videos||[]).length;}));
-    setUpP({done:0,total:totalMedia,phase:'uploading'});setStep('uploading');let uploaded=0;const processed={};
-    for(const ar of AREAS){processed[ar]={};for(const q of QS[ar]){
-      const a=ans[ar]?.[q]||{answer:'NA',remark:'',images:[],videos:[]};const imgURLs=[],vidURLs=[];
+
+  // ── START AUDIT: create session ID + check for resume ──
+  const startAudit=async()=>{
+    if(!info.auditor.trim()){alert('Please enter auditor name.');return;}
+    const sid=makeSessionId(info.site,info.week,info.auditor);
+    setSubmissionId(sid);setResumeLoading(true);
+    try{
+      const result=await fetchRecord(info.site,info.week,info.auditor);
+      if(result&&result.ok&&result.record){
+        const rec=result.record;
+        try{const ex=JSON.parse(String(rec['Answers_JSON']||'{}'));setAns(ex);}catch(_){}
+        const SMAP={'IOS_Status':'INBOUND OUTBOUND STAGING','BBB_Status':'BBB AREA','PSA_Status':'PRIMARY SORTING AREA','SSA_Status':'SECONDARY SORTING AREA','EXC_Status':'EXCEPTION AREA','VOL_Status':'VOLUMETRIC HANDLING'};
+        const completed=Object.keys(SMAP).filter(k=>{const v=rec[k];return v===true||String(v).toLowerCase()==='true';}).map(k=>SMAP[k]);
+        setDoneAr(completed);
+        if(rec['Submission_ID'])setSubmissionId(rec['Submission_ID']);
+      }
+    }catch(e){console.warn('Resume check:',e);}
+    setResumeLoading(false);setStep('areas');
+  };
+
+  // ── SECTION SAVE: upload media then POST section data ──
+  const saveSectionFn=async()=>{
+    const ar=curAr;if(!ar)return;
+    setSavingSection(true);
+    const aqs=QS[ar]||[];
+    let totalMedia=0;aqs.forEach(q=>{const a=getA(ar,q);totalMedia+=(a.images||[]).length+(a.videos||[]).length;});
+    setUpP({done:0,total:totalMedia,phase:'uploading'});
+    let uploaded=0;const processed={};
+    for(const q of aqs){
+      const a=getA(ar,q)||{answer:'NA',remark:'',images:[],videos:[]};
+      const imgURLs=[],vidURLs=[];
       for(const img of(a.images||[])){
-        try{
-          // uploadMedia now handles both cloud and local-base64 fallback
-          const u=await uploadMedia(img,'image');if(u)imgURLs.push(u);
-        }catch(e){console.warn('img:',e);}
+        try{const u=await uploadMedia(img,'image');if(u)imgURLs.push(u);}catch(e){console.warn('img:',e);}
         uploaded++;setUpP({done:uploaded,total:totalMedia,phase:'uploading'});
       }
       for(const vid of(a.videos||[])){
         try{
           const src=vid.blob||vid.file||vid.url;
-          if(cloudOK()){
-            // Cloudinary path — upload directly to cloud
-            const u=await uploadToCloud(src,'video');if(u)vidURLs.push(u);
-          }else{
-            // No Cloudinary: encode as base64 data URI.
-            // Apps Script doPost() will detect this, save to Google Drive,
-            // and replace with a permanent Drive preview URL in the sheet.
-            const dataUri=await vidSrcToBase64(src);
-            if(dataUri){vidURLs.push(dataUri);}
-            else if(vid.url){vidURLs.push(vid.url);}// last-resort blob fallback
-          }
+          if(cloudOK()){const u=await uploadToCloud(src,'video');if(u)vidURLs.push(u);}
+          else{const d=await vidSrcToBase64(src);if(d)vidURLs.push(d);}
         }catch(e){console.warn('vid:',e);}
         uploaded++;setUpP({done:uploaded,total:totalMedia,phase:'uploading'});
       }
-      processed[ar][q]={answer:a.answer||'NA',remark:a.remark||'',imageURLs:imgURLs,videoURLs:vidURLs};
-    }}
-    let pass=0,tot=0;const areaScores={};
-    AREAS.forEach(ar=>{let ap=0,at=0;QS[ar].forEach(q=>{const a=processed[ar]?.[q];if(a?.answer&&a.answer!=='NA'){at++;tot++;if(a.answer==='PASS'){ap++;pass++;}}});areaScores[ar]=at>0?Math.round(ap/at*100):0;});
-    const score=tot>0?Math.round(pass/tot*100):0;
+      processed[q]={answer:a.answer||'NA',remark:a.remark||'',imageURLs:imgURLs,videoURLs:vidURLs};
+    }
+    let ap=0,at=0;Object.values(processed).forEach(a=>{if(a.answer&&a.answer!=='NA'){at++;if(a.answer==='PASS')ap++;}});
+    const areaScore=at>0?Math.round(ap/at*100):0;
     setUpP(p=>({...p,phase:'submitting'}));
-    try{await postToSheet({site:info.site,week:parseInt(info.week),date:new Date(info.date).toLocaleDateString('en-IN'),auditor:info.auditor,score,areaScores,answers:processed});setUpP({done:0,total:0,phase:''});setStep('done');}
-    catch(e){setUpP({done:0,total:0,phase:''});setErrMsg(e.message||'Submission failed.');setStep('error');}
+    try{
+      await saveSectionToSheet(submissionId,info,ar,processed,areaScore);
+      setAns(prev=>({...prev,[ar]:processed}));
+      setDoneAr(prev=>[...prev.filter(x=>x!==ar),ar]);
+      setUpP({done:0,total:0,phase:''});setSavingSection(false);
+      setStep('areas');setQi(0);setCurAr(null);
+    }catch(e){
+      setUpP({done:0,total:0,phase:''});setSavingSection(false);
+      alert('Section save failed: '+e.message+'\nAnswers are preserved — please retry.');
+    }
   };
+
+  const allSectionsDone=doneAr.length===AREAS.length;
+
+  // ── FINAL SUBMIT (only when all 6 saved) ─────────────
+  const doFinalSubmit=async()=>{
+    if(!allSectionsDone){alert('Please save all 6 sections first.');return;}
+    setUpP({done:0,total:0,phase:'submitting'});setStep('uploading');
+    let pass=0,tot=0;const areaScores={};
+    AREAS.forEach(ar=>{let ap=0,at=0;Object.values(ans[ar]||{}).forEach(a=>{if(a?.answer&&a.answer!=='NA'){at++;tot++;if(a.answer==='PASS'){ap++;pass++;}}});areaScores[ar]=at>0?Math.round(ap/at*100):0;});
+    const score=tot>0?Math.round(pass/tot*100):0;
+    try{
+      await finalSubmitToSheet(submissionId,info,ans,areaScores,score);
+      setUpP({done:0,total:0,phase:''});setStep('done');
+    }catch(e){setUpP({done:0,total:0,phase:''});setErrMsg(e.message||'Submit failed.');setStep('error');}
+  };
+
   const qs=curAr?QS[curAr]:[];const cq=qs[qi]||'';const ca=getA(curAr,cq);
-  const arOk=qs.length>0&&qs.every(q=>['PASS','FAIL','NA'].includes(getA(curAr,q).answer));
-  if(step==='done')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><div style=${{textAlign:'center',padding:40}} class="fi"><div style=${{fontSize:72,color:C.pass,marginBottom:16}}>✓</div><div style=${{color:C.pass,fontFamily:mono,fontSize:22,fontWeight:700,marginBottom:10}}>RESPONSE RECORDED</div><div style=${{color:C.muted,fontSize:14,marginBottom:6}}>Audit submitted for <b style=${{color:C.text}}>${info.site}</b></div><div style=${{color:C.muted,fontFamily:mono,fontSize:13,marginBottom:32}}>Week ${info.week} · ${info.auditor}</div>${!cloudOK()?html`<div style=${{background:'#0a1a2a',border:`1px solid #3b82f644`,borderRadius:8,padding:12,marginBottom:14,color:'#60a5fa',fontSize:12,fontFamily:mono,lineHeight:1.7}}>ℹ Images compressed and stored in sheet.<br/>Videos saved to Google Drive automatically — links persist forever.</div>`:''}<button onClick=${onBack} style=${{background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'14px 32px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1}}>← BACK TO HOME</button></div></div>`;
-  if(step==='error')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><div style=${{textAlign:'center',padding:40,maxWidth:460}} class="fi"><div style=${{fontSize:60,marginBottom:12}}>⚠</div><div style=${{color:C.fail,fontFamily:mono,fontSize:18,fontWeight:700,marginBottom:12}}>SUBMISSION FAILED</div><div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,color:C.muted,fontSize:12,marginBottom:22,wordBreak:'break-all',whiteSpace:'pre-line'}}>${errMsg}</div><div style=${{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}><button onClick=${()=>setStep('areas')} style=${{background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 22px',fontFamily:mono,fontSize:13,cursor:'pointer'}}>← GO BACK</button><button onClick=${submitAll} style=${{background:C.fail+'22',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'12px 22px',fontFamily:mono,fontSize:13,fontWeight:700,cursor:'pointer'}}>↺ RETRY</button></div></div></div>`;
-  if(step==='uploading')return html`<${UploadModal} done=${upP.done} total=${upP.total} phase=${upP.phase}/>`;
+  const arAllAnswered=qs.length>0&&qs.every(q=>['PASS','FAIL','NA'].includes(getA(curAr,q).answer));
+
+  // ── Gate: show login if not authenticated ─────────────
+  if(!user)return html`<${LoginPage} onSuccess=${setUser} onBack=${onBack}/>`;
+
+  // ── DONE ──────────────────────────────────────────────
+  if(step==='done')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><div style=${{textAlign:'center',padding:40}} class="fi">
+    <div style=${{fontSize:72,color:C.pass,marginBottom:16}}>✓</div>
+    <div style=${{color:C.pass,fontFamily:mono,fontSize:22,fontWeight:700,marginBottom:10}}>RESPONSE RECORDED</div>
+    <div style=${{color:C.muted,fontSize:14,marginBottom:6}}>Audit submitted for <b style=${{color:C.text}}>${info.site}</b></div>
+    <div style=${{color:C.muted,fontFamily:mono,fontSize:13,marginBottom:32}}>Week ${info.week} · ${info.auditor}</div>
+    <button onClick=${onBack} style=${{background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'14px 32px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:1}}>← BACK TO HOME</button>
+  </div></div>`;
+
+  // ── ERROR ─────────────────────────────────────────────
+  if(step==='error')return html`<div style=${{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}}><div style=${{textAlign:'center',padding:40,maxWidth:460}} class="fi">
+    <div style=${{fontSize:60,marginBottom:12}}>⚠</div>
+    <div style=${{color:C.fail,fontFamily:mono,fontSize:18,fontWeight:700,marginBottom:12}}>SUBMISSION FAILED</div>
+    <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,color:C.muted,fontSize:12,marginBottom:22,wordBreak:'break-all',whiteSpace:'pre-line'}}>${errMsg}</div>
+    <div style=${{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+      <button onClick=${()=>setStep('areas')} style=${{background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 22px',fontFamily:mono,fontSize:13,cursor:'pointer'}}>← GO BACK</button>
+      <button onClick=${doFinalSubmit} style=${{background:C.fail+'22',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'12px 22px',fontFamily:mono,fontSize:13,fontWeight:700,cursor:'pointer'}}>↺ RETRY</button>
+    </div>
+  </div></div>`;
+
+  // ── UPLOADING / SAVING ────────────────────────────────
+  if(step==='uploading'||savingSection)return html`<${UploadModal} done=${upP.done} total=${upP.total} phase=${upP.phase}/>`;
+
+  // ── QUESTIONS ─────────────────────────────────────────
   if(step==='questions'&&curAr)return html`<div style=${{minHeight:'100vh',background:C.bg}}>
     ${ann?html`<${Annotate} src=${ann.src} onSave=${s=>{setFld(ann.ar,ann.q,'images',[...getA(ann.ar,ann.q).images,s]);setAnn(null);}} onDiscard=${()=>setAnn(null)}/>`:''}
     ${cam?html`<div class="overlay"><div style=${{textAlign:'center',width:'100%',maxWidth:480}}><video ref=${vRef} autoPlay playsinline style=${{width:'100%',borderRadius:8}}/><canvas ref=${cRef} style=${{display:'none'}}/><div style=${{display:'flex',gap:14,marginTop:14,justifyContent:'center'}}><button onClick=${()=>capPhoto(curAr,cq)} style=${{background:C.pass+'33',color:C.pass,border:`2px solid ${C.pass}`,borderRadius:8,padding:'14px 28px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>📸 CAPTURE</button><button onClick=${stopCam} style=${{background:C.fail+'33',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'14px 20px',fontFamily:mono,fontWeight:700,cursor:'pointer'}}>✕</button></div></div></div>`:''}
     ${vRec?html`<div class="overlay"><div style=${{textAlign:'center',width:'100%',maxWidth:480}}><div style=${{display:'inline-flex',alignItems:'center',gap:8,background:C.fail+'22',border:`2px solid ${C.fail}`,borderRadius:6,padding:'6px 14px',marginBottom:10,fontFamily:mono,fontSize:12,color:C.fail}}><span class="blink" style=${{width:10,height:10,borderRadius:'50%',background:C.fail,display:'inline-block'}}/>⏺ RECORDING…</div><video ref=${vvRef} autoPlay playsinline muted style=${{width:'100%',borderRadius:8}}/><div style=${{display:'flex',gap:14,marginTop:14,justifyContent:'center'}}><button onClick=${stopVid} style=${{background:C.fail+'33',color:C.fail,border:`2px solid ${C.fail}`,borderRadius:8,padding:'14px 28px',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer'}}>⏹ STOP & SAVE</button></div></div></div>`:''}
     <div style=${{maxWidth:600,margin:'0 auto',padding:16}}>
-      <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,marginBottom:14}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style=${{color:ACLR[curAr],fontFamily:mono,fontSize:11,fontWeight:700}}>${curAr}</span><button onClick=${()=>{setStep('areas');setQi(0);}} style=${{background:'rgba(245,158,11,.15)',color:C.accent,border:`2px solid ${C.accent}66`,fontFamily:mono,fontSize:12,fontWeight:700,cursor:'pointer',padding:'5px 14px',borderRadius:6,letterSpacing:.6}}>☰ AREAS</button></div><div style=${{color:C.muted,fontSize:11,marginBottom:8}}>${info.site} · Week ${info.week} · ${info.auditor}</div><${PBar} v=${((qi+1)/qs.length)*100} color=${ACLR[curAr]}/><div style=${{color:C.muted,fontSize:10,marginTop:4,textAlign:'right',fontFamily:mono}}>Q${qi+1}/${qs.length}</div></div>
+      <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:14,marginBottom:14}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <span style=${{color:ACLR[curAr],fontFamily:mono,fontSize:11,fontWeight:700}}>${curAr}</span>
+          <button onClick=${()=>{setStep('areas');setQi(0);}} style=${{background:'rgba(245,158,11,.15)',color:C.accent,border:`2px solid ${C.accent}66`,fontFamily:mono,fontSize:12,fontWeight:700,cursor:'pointer',padding:'5px 14px',borderRadius:6,letterSpacing:.6}}>☰ AREAS</button>
+        </div>
+        <div style=${{color:C.muted,fontSize:11,marginBottom:8}}>${info.site} · Week ${info.week} · ${info.auditor}</div>
+        <${PBar} v=${((qi+1)/qs.length)*100} color=${ACLR[curAr]}/><div style=${{color:C.muted,fontSize:10,marginTop:4,textAlign:'right',fontFamily:mono}}>Q${qi+1}/${qs.length}</div>
+      </div>
       <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:20,marginBottom:14}} class="fi">
         <div style=${{color:C.text,fontSize:15,fontWeight:500,lineHeight:1.6,marginBottom:20,minHeight:54}}>${cq}</div>
-        <div style=${{display:'flex',gap:10,marginBottom:16}}>${['PASS','FAIL','NA'].map(opt=>{const col=opt==='PASS'?C.pass:opt==='FAIL'?C.fail:C.na;const sel=ca.answer===opt;return html`<button key=${opt} onClick=${()=>setFld(curAr,cq,'answer',opt)} style=${{flex:1,background:sel?col+'33':'transparent',color:col,border:`2px solid ${sel?col:col+'55'}`,borderRadius:6,padding:'14px 0',fontSize:13,fontFamily:mono,fontWeight:sel?700:400,cursor:'pointer'}}>${opt==='PASS'?'✓ PASS':opt==='FAIL'?'✗ FAIL':'— NA'}</button>`;})}</div>
+        <div style=${{display:'flex',gap:10,marginBottom:16}}>
+          ${['PASS','FAIL','NA'].map(opt=>{const col=opt==='PASS'?C.pass:opt==='FAIL'?C.fail:C.na;const sel=ca.answer===opt;return html`<button key=${opt} onClick=${()=>setFld(curAr,cq,'answer',opt)} style=${{flex:1,background:sel?col+'33':'transparent',color:col,border:`2px solid ${sel?col:col+'55'}`,borderRadius:6,padding:'14px 0',fontSize:13,fontFamily:mono,fontWeight:sel?700:400,cursor:'pointer'}}>${opt==='PASS'?'✓ PASS':opt==='FAIL'?'✗ FAIL':'— NA'}</button>`;})}
+        </div>
         <textarea placeholder="Add remark (optional)…" value=${ca.remark||''} onInput=${e=>setFld(curAr,cq,'remark',e.target.value)} style=${{width:'100%',background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:12,fontSize:13,resize:'vertical',minHeight:60,marginBottom:12}}/>
         <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
           <button onClick=${startCam} style=${{background:C.blue+'22',color:C.blue,border:`1px solid ${C.blue}`,borderRadius:6,padding:'8px 12px',fontSize:11,fontFamily:mono,cursor:'pointer'}}>📷 CAMERA</button>
@@ -739,22 +1015,78 @@ function FillScorecard({onBack}){
       </div>
       <div style=${{display:'flex',gap:10}}>
         <button onClick=${()=>setQi(i=>Math.max(0,i-1))} disabled=${qi===0} style=${{flex:1,background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:6,padding:'13px 0',fontFamily:mono,fontSize:11,cursor:qi===0?'default':'pointer',opacity:qi===0?.3:1}}>← PREV</button>
-        ${qi<qs.length-1?html`<button onClick=${()=>setQi(i=>i+1)} disabled=${!ca.answer} style=${{flex:2,background:ca.answer?C.abl:'transparent',color:ca.answer?C.accent:C.muted,border:`2px solid ${ca.answer?C.accent:C.border}`,borderRadius:6,padding:'13px 0',fontSize:12,fontFamily:mono,fontWeight:700,cursor:ca.answer?'pointer':'default',opacity:ca.answer?1:.4}}>NEXT QUESTION →</button>`:html`<button onClick=${submitArea} disabled=${!arOk} style=${{flex:2,background:arOk?C.pass+'22':'transparent',color:arOk?C.pass:C.muted,border:`2px solid ${arOk?C.pass:C.border}`,borderRadius:6,padding:'13px 0',fontSize:12,fontFamily:mono,fontWeight:700,cursor:arOk?'pointer':'default',opacity:arOk?1:.4}}>✓ SUBMIT AREA</button>`}
+        ${qi<qs.length-1
+          ?html`<button onClick=${()=>setQi(i=>i+1)} disabled=${!ca.answer} style=${{flex:2,background:ca.answer?C.abl:'transparent',color:ca.answer?C.accent:C.muted,border:`2px solid ${ca.answer?C.accent:C.border}`,borderRadius:6,padding:'13px 0',fontSize:12,fontFamily:mono,fontWeight:700,cursor:ca.answer?'pointer':'default',opacity:ca.answer?1:.4}}>NEXT QUESTION →</button>`
+          :html`<button onClick=${saveSectionFn} disabled=${!arAllAnswered} style=${{flex:2,background:arAllAnswered?C.pass+'22':'transparent',color:arAllAnswered?C.pass:C.muted,border:`2px solid ${arAllAnswered?C.pass:C.border}`,borderRadius:6,padding:'13px 0',fontSize:12,fontFamily:mono,fontWeight:700,cursor:arAllAnswered?'pointer':'default',opacity:arAllAnswered?1:.4}}>💾 SAVE SECTION ✓</button>`}
       </div>
     </div>
   </div>`;
-  if(step==='areas')return html`<div style=${{minHeight:'100vh',background:C.bg}}><div style=${{maxWidth:600,margin:'0 auto',padding:16}}><div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:16,marginBottom:20}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style=${{fontFamily:mono,fontSize:16,fontWeight:700,color:C.text}}>${info.site}</div><div style=${{color:C.muted,fontSize:12,marginTop:4}}>Week ${info.week} · ${info.auditor}</div></div><button onClick=${onBack} style=${{background:'rgba(245,158,11,.15)',color:C.accent,border:`2px solid ${C.accent}66`,fontFamily:mono,fontSize:13,fontWeight:700,cursor:'pointer',padding:'7px 18px',borderRadius:8,letterSpacing:.8}}>⌂ HOME</button></div><div style=${{marginTop:14}}><${PBar} v=${(doneAr.length/AREAS.length)*100} color=${C.pass}/><div style=${{color:C.muted,fontSize:11,marginTop:5,fontFamily:mono}}>${doneAr.length}/${AREAS.length} areas completed</div></div></div>
-  <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:12}}>SELECT AREA TO AUDIT</div>
-  ${AREAS.map(ar=>{const done=doneAr.includes(ar);return html`<button key=${ar} onClick=${()=>{if(!done){setCurAr(ar);setStep('questions');setQi(0);}}} disabled=${done} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',background:done?C.pass+'0f':C.card,border:`1px solid ${done?C.pass+'44':C.border}`,borderRadius:10,padding:'16px 20px',marginBottom:10,color:done?C.pass:C.text,cursor:done?'default':'pointer',textAlign:'left'}}><div><div style=${{fontFamily:mono,fontSize:13,fontWeight:done?700:400}}>${ar}</div><div style=${{color:C.muted,fontSize:11,marginTop:4}}>${QS[ar].length} questions</div></div><span style=${{fontSize:20,color:done?C.pass:ACLR[ar]}}>${done?'✓':'→'}</span></button>`;})}
-  ${doneAr.length===AREAS.length?html`<button onClick=${submitAll} style=${{width:'100%',background:C.pass+'22',color:C.pass,border:`2px solid ${C.pass}`,borderRadius:8,padding:'16px 0',fontSize:14,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:12,letterSpacing:.8}}>✓ SUBMIT ALL — RECORD RESPONSE</button>`:''}
+
+  // ── AREA SELECTION ────────────────────────────────────
+  if(step==='areas')return html`<div style=${{minHeight:'100vh',background:C.bg}}><div style=${{maxWidth:600,margin:'0 auto',padding:16}}>
+    <div style=${{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:16,marginBottom:20}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <div style=${{fontFamily:mono,fontSize:16,fontWeight:700,color:C.text}}>${info.site}</div>
+          <div style=${{color:C.muted,fontSize:12,marginTop:4}}>Week ${info.week} · ${info.auditor}${user?' ('+user.name+')':''}</div>
+        </div>
+        <button onClick=${onBack} style=${{background:'rgba(245,158,11,.15)',color:C.accent,border:`2px solid ${C.accent}66`,fontFamily:mono,fontSize:13,fontWeight:700,cursor:'pointer',padding:'7px 18px',borderRadius:8,letterSpacing:.8}}>⌂ HOME</button>
+      </div>
+      <div style=${{marginTop:14}}>
+        <${PBar} v=${(doneAr.length/AREAS.length)*100} color=${C.pass}/>
+        <div style=${{color:C.muted,fontSize:11,marginTop:5,fontFamily:mono}}>${doneAr.length}/${AREAS.length} sections saved</div>
+      </div>
+    </div>
+    <div style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,marginBottom:12}}>SELECT SECTION TO AUDIT</div>
+    ${AREAS.map(ar=>{
+      const done=doneAr.includes(ar);
+      return html`<button key=${ar}
+        onClick=${()=>{setCurAr(ar);setStep('questions');setQi(0);}}
+        style=${{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',
+          background:done?C.pass+'0f':C.card,border:`1px solid ${done?C.pass+'44':C.border}`,
+          borderRadius:10,padding:'16px 20px',marginBottom:10,color:done?C.pass:C.text,cursor:'pointer',textAlign:'left'}}>
+        <div>
+          <div style=${{fontFamily:mono,fontSize:13,fontWeight:done?700:400}}>${ar}</div>
+          <div style=${{color:C.muted,fontSize:11,marginTop:4}}>${QS[ar].length} questions${done?' — ✓ SAVED':' — tap to audit'}</div>
+        </div>
+        <span style=${{fontSize:done?22:20,color:done?C.pass:ACLR[ar]}}>${done?'✅':'→'}</span>
+      </button>`;
+    })}
+    ${allSectionsDone
+      ?html`<button onClick=${doFinalSubmit}
+          style=${{width:'100%',background:'#E9DF43',color:'#000',border:'none',borderRadius:10,
+            padding:'18px 0',fontSize:16,fontFamily:mono,fontWeight:800,cursor:'pointer',marginTop:14,
+            letterSpacing:.8,boxShadow:'0 4px 24px rgba(233,223,67,.45)'}}>
+          🚀 FINAL SUBMIT — COMPLETE AUDIT
+        </button>`
+      :html`<div style=${{background:C.accent+'10',border:`1px dashed ${C.accent}44`,borderRadius:8,padding:14,marginTop:14,textAlign:'center'}}>
+          <div style=${{color:C.accent,fontFamily:mono,fontSize:12,fontWeight:700,marginBottom:4}}>🔒 FINAL SUBMIT LOCKED</div>
+          <div style=${{color:C.muted,fontSize:11}}>Save all ${AREAS.length-doneAr.length} remaining section${AREAS.length-doneAr.length!==1?'s':''} to unlock</div>
+        </div>`}
   </div></div>`;
-  return html`<div style=${{minHeight:'100vh',background:C.bg}}><div style=${{maxWidth:500,margin:'0 auto',padding:16}}><div style=${{textAlign:'center',padding:'28px 0 34px'}}><div style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:3}}>AUDIT ENTRY</div><h1 style=${{color:C.text,fontFamily:mono,fontSize:22,fontWeight:700,marginTop:6}}>FILL SCORECARD</h1></div>
-  ${[{label:'SITE NAME',key:'site',type:'select'},{label:'DATE',key:'date',type:'date'},{label:'WEEK NUMBER (AUTO)',key:'week',type:'number',ro:true},{label:'AUDITOR NAME',key:'auditor',type:'text',ph:'Enter full name'}].map(f=>html`<div key=${f.key} style=${{marginBottom:18}}><label style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,display:'block',marginBottom:8}}>${f.label}</label>${f.type==='select'?html`<select value=${info[f.key]} onChange=${e=>setInfo(p=>({...p,[f.key]:e.target.value}))} style=${{width:'100%',background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14,cursor:'pointer'}}>${SITES.map(s=>html`<option key=${s}>${s}</option>`)}</select>`:html`<input type=${f.type} readOnly=${!!f.ro} value=${info[f.key]} placeholder=${f.ph||''} onInput=${e=>{if(f.key==='date'){const d=new Date(e.target.value);setInfo(p=>({...p,date:e.target.value,week:isNaN(d.getTime())?p.week:weekNum(d)}));}else setInfo(p=>({...p,[f.key]:e.target.value}));}} style=${{width:'100%',background:f.ro?'#0a0d12':C.card,color:f.ro?C.muted:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14}}/>`}</div>`)}
-  <button onClick=${()=>info.auditor.trim()?setStep('areas'):alert('Please enter auditor name')} style=${{width:'100%',background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'16px 0',fontSize:15,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:8,letterSpacing:1}}>START AUDIT →</button>
-  <button onClick=${onBack} style=${{width:'100%',background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 0',fontFamily:mono,fontSize:13,cursor:'pointer',marginTop:10}}>← BACK TO HOME</button>
+
+  // ── INFO FORM ─────────────────────────────────────────
+  return html`<div style=${{minHeight:'100vh',background:C.bg}}><div style=${{maxWidth:500,margin:'0 auto',padding:16}}>
+    <div style=${{textAlign:'center',padding:'28px 0 34px'}}>
+      <div style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:3}}>AUDIT ENTRY</div>
+      <h1 style=${{color:C.text,fontFamily:mono,fontSize:22,fontWeight:700,marginTop:6}}>FILL SCORECARD</h1>
+      ${user?html`<div style=${{color:C.muted,fontSize:12,marginTop:6}}>Signed in as <b style=${{color:C.accent}}>${user.name}</b></div>`:''}
+    </div>
+    ${[{label:'SITE NAME',key:'site',type:'select'},{label:'DATE',key:'date',type:'date'},{label:'WEEK NUMBER (AUTO)',key:'week',type:'number',ro:true},{label:'AUDITOR NAME',key:'auditor',type:'text',ph:'Enter full name'}].map(f=>html`
+      <div key=${f.key} style=${{marginBottom:18}}>
+        <label style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,display:'block',marginBottom:8}}>${f.label}</label>
+        ${f.type==='select'
+          ?html`<select value=${info[f.key]} onChange=${e=>setInfo(p=>({...p,[f.key]:e.target.value}))} style=${{width:'100%',background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14,cursor:'pointer'}}>${SITES.map(s=>html`<option key=${s}>${s}</option>`)}</select>`
+          :html`<input type=${f.type} readOnly=${!!f.ro} value=${info[f.key]} placeholder=${f.ph||''} onInput=${e=>{if(f.key==='date'){const d=new Date(e.target.value);setInfo(p=>({...p,date:e.target.value,week:isNaN(d.getTime())?p.week:weekNum(d)}));}else setInfo(p=>({...p,[f.key]:e.target.value}));}} style=${{width:'100%',background:f.ro?'#0a0d12':C.card,color:f.ro?C.muted:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14}}/>`}
+      </div>`)}
+    ${resumeLoading?html`<div style=${{textAlign:'center',padding:'14px 0',color:C.muted,fontFamily:mono,fontSize:12}}><span class="spin">◎</span> Checking for existing record…</div>`:''}
+    <button onClick=${startAudit} disabled=${resumeLoading}
+      style=${{width:'100%',background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'16px 0',fontSize:15,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:8,letterSpacing:1}}>
+      START AUDIT →
+    </button>
+    <button onClick=${onBack} style=${{width:'100%',background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 0',fontFamily:mono,fontSize:13,cursor:'pointer',marginTop:10}}>← BACK TO HOME</button>
   </div></div>`;
 }
-
 // ════════════════════════════════════════════════════════
 //  COLLATED EMAIL REPORT GENERATOR
 // ════════════════════════════════════════════════════════
@@ -931,72 +1263,63 @@ ${f.vids.map((u,vi)=>{const resolved=u.includes('drive.google.com')?u.replace('/
 // ════════════════════════════════════════════════════════
 //  TAB 1: OVERVIEW
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  SHARED SCORING HELPERS (multi-entry DC averaging)
+// ════════════════════════════════════════════════════════
+// For a given week, group all records by DC, average each DC's scores,
+// then return a flat list of {site, score, areaScores, auditor, date, entryCount}
+function dcAveragesForWeek(records, week){
+  const wRecs=records.filter(r=>Number(r['Week_No'])===week);
+  const byDC={};
+  wRecs.forEach(r=>{const s=String(r['Site']||'');if(!byDC[s])byDC[s]=[];byDC[s].push(r);});
+  return Object.entries(byDC).map(([site,recs])=>{
+    const scores=recs.map(r=>Number(r['Overall_Score_%'])||0);
+    const avg=Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
+    const areaScores={};
+    AREAS.forEach(area=>{const av=recs.map(r=>Number(r[ACOL[area]])||0);areaScores[area]=Math.round(av.reduce((a,b)=>a+b,0)/av.length);});
+    const latest=recs[recs.length-1];
+    return{site,score:avg,areaScores,auditor:String(latest['Auditor']||'—'),date:String(latest['Audit_Date']||'—'),entryCount:recs.length,records:recs};
+  }).sort((a,b)=>b.score-a.score);
+}
+
+// ════════════════════════════════════════════════════════
+//  TAB 1: OVERVIEW
+// ════════════════════════════════════════════════════════
 function OverviewTab({records,week}){
-  const[view,setView]=useState('list');
-  const[lb,setLb]=useState(null);
-
-  const wRecs=useMemo(()=>records.filter(r=>Number(r['Week_No'])===week),[records,week]);
+  const[view,setView]=useState('list');const[lb,setLb]=useState(null);
   const activeWeeks=useMemo(()=>[...new Set(records.map(r=>Number(r['Week_No'])).filter(Boolean))].sort((a,b)=>a-b),[records]);
-
-  const siteScores=useMemo(()=>wRecs.map(r=>({
-    site:String(r['Site']||''),score:Number(r['Overall_Score_%'])||0,
-    auditor:String(r['Auditor']||'—'),date:String(r['Audit_Date']||'—'),
-  })).sort((a,b)=>b.score-a.score),[wRecs]);
-
-  const netAvg=siteScores.length?Math.round(siteScores.reduce((s,x)=>s+x.score,0)/siteScores.length):0;
-  const top3=siteScores.slice(0,3);
-  const bot3=[...siteScores].sort((a,b)=>a.score-b.score).slice(0,3);
-
-  const areaAvgs=useMemo(()=>AREAS.map(area=>({
-    area,short:ASHORT[area],color:ACLR[area],
-    avg:wRecs.length?Math.round(wRecs.reduce((s,r)=>s+(Number(r[ACOL[area]])||0),0)/wRecs.length):0
-  })),[wRecs]);
-
+  // Step 1: per-DC averages → Step 2: network avg of DC avgs
+  const dcAvgs=useMemo(()=>dcAveragesForWeek(records,week),[records,week]);
+  const netAvg=dcAvgs.length?Math.round(dcAvgs.reduce((s,x)=>s+x.score,0)/dcAvgs.length):0;
+  const top3=[...dcAvgs].slice(0,3);
+  const bot3=[...dcAvgs].sort((a,b)=>a.score-b.score).slice(0,3);
+  const areaAvgs=useMemo(()=>AREAS.map(area=>({area,short:ASHORT[area],color:ACLR[area],
+    avg:dcAvgs.length?Math.round(dcAvgs.reduce((s,x)=>s+(x.areaScores[area]||0),0)/dcAvgs.length):0})),[dcAvgs]);
   const donutAreas=areaAvgs.filter(a=>a.avg>0);
   const donutData={labels:donutAreas.map(a=>a.short),datasets:[{data:donutAreas.map(a=>a.avg),backgroundColor:donutAreas.map(a=>a.color+'cc'),borderColor:donutAreas.map(a=>a.color),borderWidth:2,hoverOffset:8}]};
   const donutOpts={responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${donutAreas[ctx.dataIndex]?.area}: ${donutAreas[ctx.dataIndex]?.avg}%`}},datalabels:{color:'#fff',font:{size:9,weight:'bold',family:mono},formatter:(_,ctx)=>`${donutAreas[ctx.dataIndex]?.short}\n${donutAreas[ctx.dataIndex]?.avg}%`,textAlign:'center',anchor:'center',align:'center',padding:2}}};
-
-  const barData={labels:siteScores.map(s=>s.site.length>11?s.site.slice(0,11)+'…':s.site),datasets:[{label:'Score %',data:siteScores.map(s=>s.score),backgroundColor:siteScores.map(s=>scCol(s.score)+'aa'),borderColor:siteScores.map(s=>scCol(s.score)),borderWidth:1,borderRadius:4}]};
+  const barData={labels:dcAvgs.map(s=>s.site.length>11?s.site.slice(0,11)+'…':s.site),datasets:[{label:'Score %',data:dcAvgs.map(s=>s.score),backgroundColor:dcAvgs.map(s=>scCol(s.score)+'aa'),borderColor:dcAvgs.map(s=>scCol(s.score)),borderWidth:1,borderRadius:4}]};
   const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#e6edf3',font:{size:9,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:2}},scales:{x:{ticks:{color:C.muted,font:{size:9},maxRotation:55},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
-
-  if(!wRecs.length)return html`<div>
+  const rankCls=i=>i===0?'rank rank-1':i===1?'rank rank-2':'rank rank-3';
+  if(!dcAvgs.length)return html`<div>
     <div style=${{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-      <button onClick=${()=>generateEmailReport(records,activeWeeks,week,true)} style=${{background:'linear-gradient(135deg,#1e3a5f,#1e40af)',color:'#93c5fd',border:`1px solid #3b82f644`,borderRadius:8,padding:'10px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:.6}}>⬇ DOWNLOAD REPORT (HTML)</button>
-      <button onClick=${()=>generateEmailReport(records,activeWeeks,week,false)} style=${{background:'linear-gradient(135deg,#0c4a6e,#075985)',color:'#7dd3fc',border:`1px solid #0ea5e944`,borderRadius:8,padding:'10px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:.6}}>🖨 PRINT / SAVE AS PDF</button>
+      <button onClick=${()=>generateEmailReport(records,activeWeeks,week,true)} style=${{background:'linear-gradient(135deg,#1e3a5f,#1e40af)',color:'#93c5fd',border:`1px solid #3b82f644`,borderRadius:8,padding:'10px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer'}}>⬇ DOWNLOAD REPORT (HTML)</button>
+      <button onClick=${()=>generateEmailReport(records,activeWeeks,week,false)} style=${{background:'linear-gradient(135deg,#0c4a6e,#075985)',color:'#7dd3fc',border:`1px solid #0ea5e944`,borderRadius:8,padding:'10px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer'}}>🖨 PRINT / PDF</button>
     </div>
     <${Empty} icon="📋" title=${'NO DATA FOR WEEK '+fmtW(week)} sub="Submit scorecards to populate this view."/>
   </div>`;
-
-  const rankCls=i=>i===0?'rank rank-1':i===1?'rank rank-2':'rank rank-3';
-
   return html`<div class="fi">
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
-
-    ${/* ── Report buttons ── */null}
     <div style=${{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-      <button onClick=${()=>generateEmailReport(records,activeWeeks,week,true)}
-        style=${{background:'linear-gradient(135deg,#1e3a5f,#1d4ed8)',color:'#bfdbfe',border:`1px solid #3b82f655`,borderRadius:8,padding:'11px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:.5,transition:'all .2s'}}
-        onMouseEnter=${e=>e.currentTarget.style.transform='translateY(-1px)'}
-        onMouseLeave=${e=>e.currentTarget.style.transform='translateY(0)'}>
-        ⬇ DOWNLOAD REPORT (HTML)
-      </button>
-      <button onClick=${()=>generateEmailReport(records,activeWeeks,week,false)}
-        style=${{background:'linear-gradient(135deg,#0c4a6e,#075985)',color:'#7dd3fc',border:`1px solid #0ea5e955`,borderRadius:8,padding:'11px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:.5,transition:'all .2s'}}
-        onMouseEnter=${e=>e.currentTarget.style.transform='translateY(-1px)'}
-        onMouseLeave=${e=>e.currentTarget.style.transform='translateY(0)'}>
-        🖨 PRINT / SAVE AS PDF
-      </button>
+      <button onClick=${()=>generateEmailReport(records,activeWeeks,week,true)} style=${{background:'linear-gradient(135deg,#1e3a5f,#1d4ed8)',color:'#bfdbfe',border:`1px solid #3b82f655`,borderRadius:8,padding:'11px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .2s'}} onMouseEnter=${e=>e.currentTarget.style.transform='translateY(-1px)'} onMouseLeave=${e=>e.currentTarget.style.transform='translateY(0)'}>⬇ DOWNLOAD REPORT (HTML)</button>
+      <button onClick=${()=>generateEmailReport(records,activeWeeks,week,false)} style=${{background:'linear-gradient(135deg,#0c4a6e,#075985)',color:'#7dd3fc',border:`1px solid #0ea5e955`,borderRadius:8,padding:'11px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .2s'}} onMouseEnter=${e=>e.currentTarget.style.transform='translateY(-1px)'} onMouseLeave=${e=>e.currentTarget.style.transform='translateY(0)'}>🖨 PRINT / PDF</button>
     </div>
-
-    ${/* ── Stat cards ── */null}
     <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))',gap:12,marginBottom:24}}>
-      <div class="stat-card amber"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>DCS SUBMITTED</div><div style=${{color:C.accent,fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${siteScores.length}</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>of ${SITES.length} total</div></div>
+      <div class="stat-card amber"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>DCS SUBMITTED</div><div style=${{color:C.accent,fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${dcAvgs.length}</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>of ${SITES.length} total</div></div>
       <div class="stat-card ${netAvg>=80?'green':netAvg>=60?'amber':'red'}"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>NETWORK AVERAGE</div><div style=${{color:scCol(netAvg),fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${netAvg}%</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>${scLabel(netAvg)}</div></div>
-      <div class="stat-card green"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>≥ 80% GOOD</div><div style=${{color:C.pass,fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${siteScores.filter(s=>s.score>=80).length}</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>sites</div></div>
-      <div class="stat-card red"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>&lt; 60% ACTION NEEDED</div><div style=${{color:C.fail,fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${siteScores.filter(s=>s.score<60).length}</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>sites</div></div>
+      <div class="stat-card green"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>≥ 80% GOOD</div><div style=${{color:C.pass,fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${dcAvgs.filter(s=>s.score>=80).length}</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>sites</div></div>
+      <div class="stat-card red"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>&lt; 60% ACTION</div><div style=${{color:C.fail,fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${dcAvgs.filter(s=>s.score<60).length}</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>sites</div></div>
     </div>
-
-    ${/* ── Top / Bottom 3 ── */null}
     <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24}} class="col-2">
       ${[{label:'▲ TOP 3 PERFORMING',color:C.pass,data:top3},{label:'▼ BOTTOM 3 PERFORMING',color:C.fail,data:bot3}].map(({label,color,data},gi)=>html`
         <div key=${gi} style=${{background:C.card,border:`1px solid ${color}22`,borderRadius:10,padding:16}}>
@@ -1004,14 +1327,12 @@ function OverviewTab({records,week}){
           ${data.map((s,i)=>html`<div key=${i} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:i<data.length-1?`1px solid ${C.border}20`:'none'}}>
             <div style=${{display:'flex',alignItems:'center',gap:10}}>
               <div class=${rankCls(i)}>${i+1}</div>
-              <div><div style=${{color:C.text,fontSize:13,fontWeight:500}}>${s.site}</div><div style=${{color:C.muted,fontSize:10,marginTop:1}}>${s.auditor}</div></div>
+              <div><div style=${{color:C.text,fontSize:13,fontWeight:500}}>${s.site}</div><div style=${{color:C.muted,fontSize:10,marginTop:1}}>${s.auditor}${s.entryCount>1?html` <span style=${{color:C.accent,fontSize:9,fontFamily:mono}}>(${s.entryCount} avg)</span>`:''}</div></div>
             </div>
             <${ScBadge} score=${s.score}/>
           </div>`)}
         </div>`)}
     </div>
-
-    ${/* ── Donut + area bars ── */null}
     <div class="card" style=${{padding:20,marginBottom:24}}>
       <${SH}>Network Average — Area Breakdown (${fmtW(week)})</${SH}>
       <div style=${{display:'flex',gap:28,alignItems:'center',flexWrap:'wrap'}}>
@@ -1024,31 +1345,26 @@ function OverviewTab({records,week}){
         </div>
         <div style=${{flex:1,minWidth:200}}>
           ${areaAvgs.map(a=>html`<div key=${a.area} style=${{marginBottom:11}}>
-            <div style=${{display:'flex',justifyContent:'space-between',marginBottom:4,alignItems:'baseline'}}>
-              <span style=${{fontSize:10,color:C.text,fontFamily:mono}}><span style=${{color:a.color,fontWeight:700}}>${a.short}</span> ${a.area}</span>
-              <span style=${{fontSize:14,color:a.color,fontFamily:mono,fontWeight:700,flexShrink:0,marginLeft:8}}>${a.avg}%</span>
-            </div>
+            <div style=${{display:'flex',justifyContent:'space-between',marginBottom:4,alignItems:'baseline'}}><span style=${{fontSize:10,color:C.text,fontFamily:mono}}><span style=${{color:a.color,fontWeight:700}}>${a.short}</span> ${a.area}</span><span style=${{fontSize:14,color:a.color,fontFamily:mono,fontWeight:700,flexShrink:0,marginLeft:8}}>${a.avg}%</span></div>
             <${PBar} v=${a.avg} color=${a.color} h=${5}/>
           </div>`)}
         </div>
       </div>
     </div>
-
-    ${/* ── List / Chart toggle ── */null}
     <div class="card" style=${{padding:16}}>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
         <${SH} mb=${0}>All Sites — ${fmtW(week)} Performance</${SH}>
-        <div class="tgl">
-          <button class=${'tgl-btn'+(view==='list'?' on':'')} onClick=${()=>setView('list')}>≡ LIST</button>
-          <button class=${'tgl-btn'+(view==='chart'?' on':'')} onClick=${()=>setView('chart')}>▦ CHART</button>
-        </div>
+        <div class="tgl"><button class=${'tgl-btn'+(view==='list'?' on':'')} onClick=${()=>setView('list')}>≡ LIST</button><button class=${'tgl-btn'+(view==='chart'?' on':'')} onClick=${()=>setView('chart')}>▦ CHART</button></div>
       </div>
       ${view==='list'
-        ?html`<div>${siteScores.map((s,i)=>html`<div key=${i} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:i<siteScores.length-1?`1px solid ${C.border}20`:'none'}}>
-          <div><span style=${{color:C.text,fontSize:13,fontWeight:500}}>${s.site}</span><span style=${{color:C.muted,fontSize:10,marginLeft:10,fontFamily:mono}}>${s.auditor}</span></div>
-          <div style=${{display:'flex',alignItems:'center',gap:14}}><div style=${{width:120,height:5,background:C.border,borderRadius:3,overflow:'hidden'}}><div style=${{width:s.score+'%',height:'100%',background:scCol(s.score),borderRadius:3}}/></div><${ScBadge} score=${s.score}/></div>
+        ?html`<div>${dcAvgs.map((s,i)=>html`<div key=${i} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:i<dcAvgs.length-1?`1px solid ${C.border}20`:'none'}}>
+          <div><span style=${{color:C.text,fontSize:13,fontWeight:500}}>${s.site}</span><span style=${{color:C.muted,fontSize:10,marginLeft:10,fontFamily:mono}}>${s.auditor}</span>${s.entryCount>1?html`<span style=${{color:C.accent,fontSize:9,marginLeft:6,fontFamily:mono}}>(${s.entryCount} entries)</span>`:''}</div>
+          <div style=${{display:'flex',alignItems:'center',gap:14}}>
+            <div style=${{width:120,height:5,background:C.border,borderRadius:3,overflow:'hidden'}}><div style=${{width:s.score+'%',height:'100%',background:scCol(s.score),borderRadius:3}}/></div>
+            <${ScBadge} score=${s.score}/>
+          </div>
         </div>`)}</div>`
-        :html`<div style=${{height:Math.max(260,siteScores.length*18)+'px'}}><${ChartComp} type="bar" data=${barData} options=${barOpts} style=${{width:'100%',height:'100%'}}/></div>`}
+        :html`<div style=${{height:Math.max(260,dcAvgs.length*18)+'px'}}><${ChartComp} type="bar" data=${barData} options=${barOpts} style=${{width:'100%',height:'100%'}}/></div>`}
     </div>
   </div>`;
 }
@@ -1057,60 +1373,39 @@ function OverviewTab({records,week}){
 //  TAB 2: DC DETAIL VIEW
 // ════════════════════════════════════════════════════════
 function DCDetailTab({records,week,site,setSite}){
-  const[sub,setSub]=useState('performance');
-  const[lb,setLb]=useState(null);
-
-  const rec=useMemo(()=>records.find(r=>String(r['Site'])===site&&Number(r['Week_No'])===week)||null,[records,site,week]);
+  const[sub,setSub]=useState('performance');const[lb,setLb]=useState(null);
+  const[selDate,setSelDate]=useState('');
+  const siteWeekRecs=useMemo(()=>records.filter(r=>String(r['Site'])===site&&Number(r['Week_No'])===week),[records,site,week]);
+  const dates=useMemo(()=>[...new Set(siteWeekRecs.map(r=>String(r['Audit_Date']||'')).filter(Boolean))],[siteWeekRecs]);
+  useEffect(()=>{setSelDate(dates.length>0?dates[0]:'');},[site,week,JSON.stringify(dates)]);
+  const rec=useMemo(()=>{
+    if(selDate)return siteWeekRecs.find(r=>String(r['Audit_Date']||'')===selDate)||siteWeekRecs[siteWeekRecs.length-1]||null;
+    return siteWeekRecs[siteWeekRecs.length-1]||null;
+  },[siteWeekRecs,selDate]);
   const answers=useMemo(()=>rec?parseAns(rec):{},[rec]);
-
   const areaScores=useMemo(()=>AREAS.map(a=>({area:a,score:Number(rec?.[ACOL[a]])||0,color:ACLR[a],short:ASHORT[a]})),[rec]);
-  const score=Number(rec?.['Overall_Score_%'])||0;
-  const auditor=String(rec?.['Auditor']||'—');
-  const date=String(rec?.['Audit_Date']||'—');
-  const passC=Number(rec?.['Pass_Count'])||0;
-  const failC=Number(rec?.['Fail_Count'])||0;
-  const naC=Number(rec?.['NA_Count'])||0;
-
-  // Build fails with media — supports both http URLs and data: URIs (local fallback)
-  const fails=useMemo(()=>{
-    const out=[];
-    AREAS.forEach(area=>{
-      Object.entries(answers[area]||{}).forEach(([q,a])=>{
-        if(a?.answer==='FAIL'){
-          // Accept both http URLs and base64 data URIs
-          const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));
-          const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));
-          out.push({area,q,neg:toNeg(q),remark:a.remark||'',imgs,vids});
-        }
-      });
-    });
-    return out;
-  },[answers]);
-
-  const allMedia=useMemo(()=>{
-    const items=[];
-    AREAS.forEach(area=>{
-      Object.entries(answers[area]||{}).forEach(([q,a])=>{
-        (a?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))items.push({type:'image',src:u,area,q});});
-        (a?.videoURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('blob:')))items.push({type:'video',url:u,area,q});});
-      });
-    });
-    return items;
-  },[answers]);
-
+  const score=Number(rec?.['Overall_Score_%'])||0;const auditor=String(rec?.['Auditor']||'—');const date=String(rec?.['Audit_Date']||'—');
+  const passC=Number(rec?.['Pass_Count'])||0;const failC=Number(rec?.['Fail_Count'])||0;const naC=Number(rec?.['NA_Count'])||0;
+  const fails=useMemo(()=>{const out=[];AREAS.forEach(area=>{Object.entries(answers[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL'){const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));out.push({area,q,neg:toNeg(q),remark:a.remark||'',imgs,vids});}});});return out;},[answers]);
+  const allMedia=useMemo(()=>{const items=[];AREAS.forEach(area=>{Object.entries(answers[area]||{}).forEach(([q,a])=>{(a?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))items.push({type:'image',src:u,area,q});});(a?.videoURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('blob:')))items.push({type:'video',url:u,area,q});});});});return items;},[answers]);
   const barData={labels:areaScores.map(a=>a.short),datasets:[{label:'Score %',data:areaScores.map(a=>a.score),backgroundColor:areaScores.map(a=>a.color+'bb'),borderColor:areaScores.map(a=>a.color),borderWidth:1,borderRadius:4}]};
   const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#e6edf3',font:{size:11,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:3}},scales:{x:{ticks:{color:C.muted,font:{size:10}},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
-
   return html`<div class="fi">
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
-
-    <div style=${{marginBottom:20}}>
-      <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>SELECT SITE</div>
-      <select value=${site} onChange=${e=>setSite(e.target.value)} style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'11px 18px',fontSize:14,fontFamily:mono,cursor:'pointer',minWidth:220}}>
-        ${SITES.map(s=>html`<option key=${s}>${s}</option>`)}
-      </select>
+    <div style=${{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap',alignItems:'flex-end'}}>
+      <div><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>SELECT SITE</div>
+        <select value=${site} onChange=${e=>setSite(e.target.value)} style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'11px 18px',fontSize:14,fontFamily:mono,cursor:'pointer',minWidth:220}}>
+          ${SITES.map(s=>html`<option key=${s}>${s}</option>`)}
+        </select>
+      </div>
+      ${dates.length>1?html`<div>
+        <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>SELECT DATE</div>
+        <select value=${selDate} onChange=${e=>setSelDate(e.target.value)} style=${{background:C.card,color:C.text,border:`1px solid ${C.accent}44`,borderRadius:8,padding:'11px 18px',fontSize:13,fontFamily:mono,cursor:'pointer',minWidth:160}}>
+          ${dates.map(d=>html`<option key=${d} value=${d}>${d}</option>`)}
+        </select>
+      </div>`:''}
+      ${siteWeekRecs.length>1?html`<div style=${{background:C.accent+'12',border:`1px solid ${C.accent}33`,borderRadius:8,padding:'8px 14px',fontFamily:mono,fontSize:10,color:C.accent}}>${siteWeekRecs.length} entries for ${fmtW(week)}</div>`:''}
     </div>
-
     ${rec?html`<div style=${{background:'linear-gradient(135deg,#161b22 0%,#1a2234 100%)',border:`1px solid ${scCol(score)}33`,borderRadius:14,padding:'22px 26px',marginBottom:20,position:'relative',overflow:'hidden'}}>
       <div style=${{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${scCol(score)},${scCol(score)}88)`}}/>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:16}}>
@@ -1121,7 +1416,9 @@ function DCDetailTab({records,week,site,setSite}){
             <span style=${{background:'#ffffff08',color:C.muted,borderRadius:4,padding:'3px 10px',fontSize:10,fontFamily:mono}}>${date}</span>
             <span style=${{background:'#ffffff08',color:C.muted,borderRadius:4,padding:'3px 10px',fontSize:10,fontFamily:mono}}>${auditor}</span>
           </div>
-          <div style=${{display:'flex',gap:14,fontFamily:mono,fontSize:11}}><span style=${{color:C.pass}}>✓ ${passC} PASS</span><span style=${{color:C.fail}}>✗ ${failC} FAIL</span><span style=${{color:C.na}}>— ${naC} NA</span></div>
+          <div style=${{display:'flex',gap:14,fontFamily:mono,fontSize:11}}>
+            <span style=${{color:C.pass}}>✓ ${passC} PASS</span><span style=${{color:C.fail}}>✗ ${failC} FAIL</span><span style=${{color:C.na}}>— ${naC} NA</span>
+          </div>
         </div>
         <div style=${{textAlign:'right'}}><div style=${{fontSize:52,fontFamily:mono,fontWeight:700,color:scCol(score),lineHeight:1}}>${score}%</div><div style=${{color:C.muted,fontSize:8,fontFamily:mono,letterSpacing:2,marginTop:4}}>PERFORMANCE SCORE</div></div>
       </div>
@@ -1131,97 +1428,62 @@ function DCDetailTab({records,week,site,setSite}){
           <div style=${{fontSize:18,fontFamily:mono,fontWeight:700,color:a.color}}>${a.score}%</div>
         </div>`)}
       </div>
-    </div>`:html`<div class="card" style=${{padding:36,textAlign:'center',marginBottom:20}}><${Empty} icon="📭" title=${'NO AUDIT DATA'} sub=${site+' has not been audited for '+fmtW(week)}/></div>`}
-
+    </div>`:html`<div class="card" style=${{padding:36,textAlign:'center',marginBottom:20}}><${Empty} icon="📭" title="NO AUDIT DATA" sub=${site+' — '+fmtW(week)}/></div>`}
     ${rec?html`<div>
       <div style=${{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
-        ${['performance','improvement','snaps','checklist'].map(v=>html`<button key=${v} class=${'sub-btn'+(sub===v?' act':'')} onClick=${()=>setSub(v)}>
-          ${v==='performance'?'📊 PERFORMANCE':v==='improvement'?'⚠ IMPROVEMENT AREAS':v==='snaps'?'📸 SNAP COLLATED':'☑ CHECKLIST'}
-        </button>`)}
+        ${['performance','improvement','snaps','checklist'].map(v=>html`<button key=${v} class=${'sub-btn'+(sub===v?' act':'')} onClick=${()=>setSub(v)}>${v==='performance'?'📊 PERFORMANCE':v==='improvement'?'⚠ IMPROVEMENT AREAS':v==='snaps'?'📸 SNAP COLLATED':'☑ CHECKLIST'}</button>`)}
       </div>
-
       ${sub==='performance'?html`<div class="card" style=${{padding:18}} class="fi">
         <${SH}>Area Performance — ${site}</${SH}>
         <div style=${{height:280}}><${ChartComp} type="bar" data=${barData} options=${barOpts} style=${{width:'100%',height:'100%'}}/></div>
         <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:8,marginTop:16}}>
-          ${areaScores.map(a=>html`<div key=${a.area} style=${{background:a.color+'10',border:`1px solid ${a.color}33`,borderRadius:6,padding:12}}>
-            <div style=${{fontSize:8,color:a.color,fontFamily:mono,fontWeight:700,marginBottom:4,letterSpacing:.8}}>${a.area}</div>
-            <div style=${{fontSize:20,fontFamily:mono,fontWeight:700,color:a.color,marginBottom:4}}>${a.score}%</div>
-            <${PBar} v=${a.score} color=${a.color} h=${4}/>
-          </div>`)}
+          ${areaScores.map(a=>html`<div key=${a.area} style=${{background:a.color+'10',border:`1px solid ${a.color}33`,borderRadius:6,padding:12}}><div style=${{fontSize:8,color:a.color,fontFamily:mono,fontWeight:700,marginBottom:4,letterSpacing:.8}}>${a.area}</div><div style=${{fontSize:20,fontFamily:mono,fontWeight:700,color:a.color,marginBottom:4}}>${a.score}%</div><${PBar} v=${a.score} color=${a.color} h=${4}/></div>`)}
         </div>
       </div>`:''}
-
       ${sub==='improvement'?html`<div class="card" style=${{padding:18}} class="fi">
         <${SH} c=${C.fail}>Improvement Areas — ${fails.length} Failed Question${fails.length!==1?'s':''}</${SH}>
-        ${fails.length===0
-          ?html`<div style=${{textAlign:'center',padding:36}}><div style=${{fontSize:40,marginBottom:12}}>🎉</div><div style=${{color:C.pass,fontFamily:mono,fontSize:13,fontWeight:700}}>EXCELLENT — NO FAILURES RECORDED</div></div>`
-          :fails.map((f,i)=>html`<div key=${i} style=${{background:C.fail+'06',border:`1px solid ${C.fail}18`,borderRadius:8,padding:14,marginBottom:10}}>
+        ${fails.length===0?html`<div style=${{textAlign:'center',padding:36}}><div style=${{fontSize:40,marginBottom:12}}>🎉</div><div style=${{color:C.pass,fontFamily:mono,fontSize:13,fontWeight:700}}>EXCELLENT — NO FAILURES RECORDED</div></div>`:fails.map((f,i)=>html`
+          <div key=${i} style=${{background:C.fail+'06',border:`1px solid ${C.fail}18`,borderRadius:8,padding:14,marginBottom:10}}>
             <div style=${{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
               <div style=${{flex:1,minWidth:180}}>
                 <div style=${{display:'flex',gap:8,alignItems:'flex-start',marginBottom:f.remark?6:0}}>
                   <span style=${{color:C.fail,fontSize:16,lineHeight:1.3,flexShrink:0,marginTop:1}}>✗</span>
-                  <div>
-                    <div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.neg}</div>
-                    <div style=${{color:C.muted,fontSize:9,marginTop:2,fontFamily:mono,letterSpacing:.4}}>${f.area}</div>
-                  </div>
+                  <div><div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.neg}</div><div style=${{color:C.muted,fontSize:9,marginTop:2,fontFamily:mono,letterSpacing:.4}}>${f.area}</div></div>
                 </div>
-                ${f.remark?html`<div style=${{marginLeft:24,marginTop:4,paddingLeft:10,borderLeft:`2px solid #fbbf2466`,color:'#fbbf24',fontSize:11,lineHeight:1.5,fontStyle:'italic'}}>
-                  <span style=${{color:C.muted,fontSize:9,fontFamily:mono,fontStyle:'normal',display:'block',marginBottom:1,letterSpacing:.4}}>REMARK</span>
-                  ${f.remark}
-                </div>`:''}
+                ${f.remark?html`<div style=${{marginLeft:24,marginTop:4,paddingLeft:10,borderLeft:`2px solid #fbbf2466`,color:'#fbbf24',fontSize:11,lineHeight:1.5,fontStyle:'italic'}}><span style=${{color:C.muted,fontSize:9,fontFamily:mono,fontStyle:'normal',display:'block',marginBottom:1,letterSpacing:.4}}>REMARK</span>${f.remark}</div>`:''}
               </div>
-              ${/* ── Media column — images + videos beside improvement area ── */null}
               ${(f.imgs.length>0||f.vids.length>0)?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',flexShrink:0,alignItems:'flex-start'}}>
-                ${f.imgs.map((u,j)=>html`<img key=${j} src=${u}
-                  onClick=${()=>setLb({items:[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))],idx:j})}
-                  style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.fail}44`,transition:'all .15s'}}
-                  onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.fail;e.currentTarget.style.transform='scale(1.05)';}}
-                  onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.fail+'44';e.currentTarget.style.transform='scale(1)';}}/>`)}
-                ${f.vids.map((u,j)=>html`<div key=${j}
-                  onClick=${()=>setLb({items:[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))],idx:f.imgs.length+j})}
-                  style=${{width:72,height:72,background:'#0a2030',border:`2px solid #06b6d444`,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:22,transition:'border-color .15s'}}
-                  onMouseEnter=${e=>e.currentTarget.style.borderColor='#06b6d4'}
-                  onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d444'}>
-                  🎥<span style=${{color:C.cyan,fontSize:8,fontFamily:mono,marginTop:2}}>PLAY</span>
-                </div>`)}
+                ${f.imgs.map((u,j)=>html`<img key=${j} src=${u} onClick=${()=>setLb({items:[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))],idx:j})} style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.fail}44`,transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.fail;e.currentTarget.style.transform='scale(1.05)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.fail+'44';e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/>`)}
+                ${f.vids.map((u,j)=>html`<div key=${j} onClick=${()=>setLb({items:[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))],idx:f.imgs.length+j})} style=${{width:72,height:72,background:'#0a2030',border:`2px solid #06b6d444`,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:22,transition:'border-color .15s'}} onMouseEnter=${e=>e.currentTarget.style.borderColor='#06b6d4'} onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d444'}>🎥<span style=${{color:C.cyan,fontSize:8,fontFamily:mono,marginTop:2}}>PLAY</span></div>`)}
               </div>`:''}
             </div>
           </div>`)}
       </div>`:''}
-
       ${sub==='snaps'?html`<div class="card" style=${{padding:18}} class="fi">
         <${SH}>Snap Collated — All Media</${SH}>
         ${allMedia.length===0?html`<${Empty} icon="📷" title="NO MEDIA RECORDED" sub="Images/videos will appear here once uploaded."/>`:html`
-          ${AREAS.map(area=>{
-            const aMedia=allMedia.filter(m=>m.area===area);
-            if(!aMedia.length)return null;
+          ${AREAS.map(area=>{const aMedia=allMedia.filter(m=>m.area===area);if(!aMedia.length)return null;
             return html`<div key=${area} style=${{marginBottom:20}}>
               <div style=${{color:ACLR[area],fontFamily:mono,fontSize:10,fontWeight:700,marginBottom:10,padding:'5px 12px',background:ACLR[area]+'10',borderLeft:`3px solid ${ACLR[area]}`,borderRadius:'0 5px 5px 0',letterSpacing:.8}}>${area}</div>
               <div style=${{display:'flex',flexWrap:'wrap',gap:8}}>
                 ${aMedia.map((m,j)=>m.type==='image'
-                  ?html`<div key=${j} style=${{position:'relative',cursor:'pointer'}} onClick=${()=>setLb({items:allMedia,idx:allMedia.indexOf(m)})}>
-                    <img src=${m.src} style=${{width:84,height:84,objectFit:'cover',borderRadius:6,border:`2px solid ${C.border}`,display:'block',transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=ACLR[area];e.currentTarget.style.transform='scale(1.05)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform='scale(1)';}}/>
-                  </div>`
-                  :html`<div key=${j} style=${{width:84,height:84,background:'#0a2030',border:`2px solid #06b6d444`,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontSize:28,cursor:'pointer',gap:3,transition:'border-color .15s'}} onClick=${()=>setLb({items:allMedia,idx:allMedia.indexOf(m)})} onMouseEnter=${e=>e.currentTarget.style.borderColor='#06b6d4'} onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d444'}>
-                    🎥<span style=${{color:C.cyan,fontSize:8,fontFamily:mono}}>PLAY</span>
-                  </div>`)}
+                  ?html`<div key=${j} style=${{position:'relative',cursor:'pointer'}} onClick=${()=>setLb({items:allMedia,idx:allMedia.indexOf(m)})}><img src=${m.src} style=${{width:84,height:84,objectFit:'cover',borderRadius:6,border:`2px solid ${C.border}`,display:'block',transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=ACLR[area];e.currentTarget.style.transform='scale(1.05)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/></div>`
+                  :html`<div key=${j} style=${{width:84,height:84,background:'#0a2030',border:`2px solid #06b6d444`,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontSize:28,cursor:'pointer',gap:3,transition:'border-color .15s'}} onClick=${()=>setLb({items:allMedia,idx:allMedia.indexOf(m)})} onMouseEnter=${e=>e.currentTarget.style.borderColor='#06b6d4'} onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d444'}>🎥<span style=${{color:C.cyan,fontSize:8,fontFamily:mono}}>PLAY</span></div>`)}
               </div>
-            </div>`;
-          })}
-        `}
+            </div>`;})}`}
       </div>`:''}
-
       ${sub==='checklist'?html`<div class="card" style=${{padding:18}} class="fi">
-        <${SH}>Full Checklist — ${site} (${fmtW(week)})</${SH}>
-        ${AREAS.map(area=>{
-          const qs=answers[area]||{};
+        <${SH}>Full Checklist — ${site} (${fmtW(week)}${dates.length>1?' · '+selDate:''})</${SH}>
+        ${AREAS.map(area=>{const qs=answers[area]||{};
           return html`<div key=${area} style=${{marginBottom:22}}>
             <div style=${{color:ACLR[area],fontFamily:mono,fontSize:10,fontWeight:700,padding:'6px 12px',background:ACLR[area]+'10',borderLeft:`3px solid ${ACLR[area]}`,borderRadius:'0 5px 5px 0',marginBottom:8,letterSpacing:.8}}>${area}</div>
             ${(QS[area]||[]).map((q,i)=>{const a=qs[q]||{};const ac=a.answer==='PASS'?C.pass:a.answer==='FAIL'?C.fail:C.na;
-              return html`<div key=${i} style=${{display:'flex',gap:10,padding:'8px 6px',borderBottom:`1px solid ${C.border}18`,alignItems:'flex-start',background:a.answer==='FAIL'?C.fail+'05':'transparent',borderRadius:4}}>
-                <span style=${{background:ac+'20',color:ac,border:`1px solid ${ac}44`,borderRadius:3,padding:'2px 8px',fontFamily:mono,fontSize:9,fontWeight:700,flexShrink:0,marginTop:2,minWidth:44,textAlign:'center'}}>${a.answer||'—'}</span>
-                <div style=${{flex:1}}><div style=${{color:a.answer==='FAIL'?'#fca5a5':C.text,fontSize:12,lineHeight:1.5}}>${q}</div>${a.remark?html`<div style=${{color:'#fbbf24',fontSize:10,marginTop:3,fontStyle:'italic'}}>↳ ${a.remark}</div>`:''}</div>
+              return html`<div key=${i} style=${{padding:'10px 8px',borderBottom:`1px solid ${C.border}18`,background:a.answer==='FAIL'?C.fail+'06':'transparent',borderRadius:4,marginBottom:2}}>
+                <div style=${{display:'flex',gap:10,alignItems:'flex-start',marginBottom:a.remark?6:0}}>
+                  <span style=${{background:ac+'20',color:ac,border:`1px solid ${ac}44`,borderRadius:3,padding:'2px 8px',fontFamily:mono,fontSize:9,fontWeight:700,flexShrink:0,marginTop:2,minWidth:44,textAlign:'center'}}>${a.answer||'—'}</span>
+                  <div style=${{color:a.answer==='FAIL'?'#fca5a5':C.text,fontSize:12,lineHeight:1.5,flex:1}}>${q}</div>
+                </div>
+                ${a.remark?html`<div style=${{marginLeft:62,color:'#fbbf24',fontSize:11,fontStyle:'italic',lineHeight:1.5,paddingLeft:8,borderLeft:'2px solid #fbbf2433'}}>↳ ${a.remark}</div>`:''}
               </div>`;
             })}
           </div>`;
@@ -1235,34 +1497,52 @@ function DCDetailTab({records,week,site,setSite}){
 //  TAB 3: WEEKLY PERFORMANCE
 // ════════════════════════════════════════════════════════
 function WeeklyPerfTab({records,site,setSite,activeWeeks}){
-  const[ct,setCt]=useState('line');
-  const[lb,setLb]=useState(null);// lightbox for improvement area media
+  const[ct,setCt]=useState('line');const[lb,setLb]=useState(null);
   const wkLabels=activeWeeks.map(fmtW);
-  const netByWeek=useMemo(()=>activeWeeks.map(wk=>{const wr=records.filter(r=>Number(r['Week_No'])===wk);return wr.length?Math.round(wr.reduce((s,r)=>s+(Number(r['Overall_Score_%'])||0),0)/wr.length):null;}),[records,activeWeeks]);
-  const dcByWeek=useMemo(()=>activeWeeks.map(wk=>{const r=records.find(r=>String(r['Site'])===site&&Number(r['Week_No'])===wk);return r?Number(r['Overall_Score_%'])||0:null;}),[records,site,activeWeeks]);
+  // Network avg per week: Step 1 = per-DC avg, Step 2 = network avg of DC avgs
+  const netByWeek=useMemo(()=>activeWeeks.map(wk=>{
+    const dcAvgs=dcAveragesForWeek(records,wk);
+    return dcAvgs.length?Math.round(dcAvgs.reduce((s,x)=>s+x.score,0)/dcAvgs.length):null;
+  }),[records,activeWeeks]);
+  // DC per-week: average if multiple entries
+  const dcByWeek=useMemo(()=>activeWeeks.map(wk=>{
+    const recs=records.filter(r=>String(r['Site'])===site&&Number(r['Week_No'])===wk);
+    if(!recs.length)return null;
+    return Math.round(recs.map(r=>Number(r['Overall_Score_%'])||0).reduce((a,b)=>a+b,0)/recs.length);
+  }),[records,site,activeWeeks]);
   const netData={labels:wkLabels,datasets:[{label:'Network Avg %',data:netByWeek,borderColor:C.accent,backgroundColor:ct==='bar'?C.accent+'99':'rgba(245,158,11,.15)',borderWidth:2.5,tension:.35,fill:ct==='line',pointBackgroundColor:C.accent,pointRadius:5,pointHoverRadius:8,spanGaps:false}]};
   const netOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:ctx=>netByWeek[ctx.dataIndex]!==null,color:C.accent,font:{size:10,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:4}},scales:{x:{ticks:{color:C.muted},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
-  const dcData={labels:wkLabels,datasets:[{label:`${site} Overall`,data:dcByWeek,borderColor:C.blue,backgroundColor:C.blue+'25',borderWidth:2.5,tension:.35,fill:true,pointBackgroundColor:C.blue,pointRadius:5,spanGaps:false},...AREAS.map(a=>({label:ASHORT[a],data:activeWeeks.map(wk=>{const r=records.find(r=>String(r['Site'])===site&&Number(r['Week_No'])===wk);return r?Number(r[ACOL[a]])||null:null;}),borderColor:ACLR[a],backgroundColor:'transparent',borderWidth:1.5,tension:.35,borderDash:[4,4],pointRadius:3,spanGaps:false}))]};
+  const areaByWeek=AREAS.map(area=>({label:ASHORT[area],data:activeWeeks.map(wk=>{
+    const recs=records.filter(r=>String(r['Site'])===site&&Number(r['Week_No'])===wk);
+    if(!recs.length)return null;
+    return Math.round(recs.map(r=>Number(r[ACOL[area]])||0).reduce((a,b)=>a+b,0)/recs.length);
+  }),borderColor:ACLR[area],backgroundColor:'transparent',borderWidth:1.5,tension:.35,borderDash:[4,4],pointRadius:3,spanGaps:false}));
+  const dcData={labels:wkLabels,datasets:[{label:`${site} Overall`,data:dcByWeek,borderColor:C.blue,backgroundColor:C.blue+'25',borderWidth:2.5,tension:.35,fill:true,pointBackgroundColor:C.blue,pointRadius:5,spanGaps:false},...areaByWeek]};
   const dcOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:C.muted,font:{size:10,family:mono},boxWidth:12,padding:12,usePointStyle:true}},datalabels:{display:false}},scales:{x:{ticks:{color:C.muted},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
-  const tableData=AREAS.map(area=>({area,short:ASHORT[area],color:ACLR[area],weeks:activeWeeks.map(wk=>{const r=records.find(r=>String(r['Site'])===site&&Number(r['Week_No'])===wk);return r?Number(r[ACOL[area]])||0:null;})}));
+  const tableData=AREAS.map(area=>({area,short:ASHORT[area],color:ACLR[area],weeks:activeWeeks.map(wk=>{
+    const recs=records.filter(r=>String(r['Site'])===site&&Number(r['Week_No'])===wk);
+    if(!recs.length)return null;
+    return Math.round(recs.map(r=>Number(r[ACOL[area]])||0).reduce((a,b)=>a+b,0)/recs.length);
+  })}));
   const downloadReport=()=>{
     const allRecs=records.filter(r=>String(r['Site'])===site).sort((a,b)=>Number(a['Week_No'])-Number(b['Week_No']));
     const fails={};allRecs.forEach(rec=>{const ans=parseAns(rec);AREAS.forEach(a=>{Object.entries(ans[a]||{}).forEach(([q,av])=>{if(av?.answer==='FAIL'){if(!fails[q])fails[q]={q,neg:toNeg(q),count:0,area:a};fails[q].count++;}});});});
     const topFails=Object.values(fails).sort((a,b)=>b.count-a.count).slice(0,12);
     const allImgs=[];allRecs.forEach(rec=>{const ans=parseAns(rec);AREAS.forEach(a=>{Object.values(ans[a]||{}).forEach(v=>{(v?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))allImgs.push({url:u,wk:rec['Week_No'],area:a});});});});});
-    const colBg=(v)=>v>=80?'#d1fae5':v>=60?'#fef3c7':'#fee2e2';const colFg=(v)=>v>=80?'#065f46':v>=60?'#92400e':'#991b1b';
+    const colBg=v=>v>=80?'#d1fae5':v>=60?'#fef3c7':'#fee2e2';const colFg=v=>v>=80?'#065f46':v>=60?'#92400e':'#991b1b';
     const w=window.open('','_blank');if(!w)return alert('Popup blocked');
-    let body=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>DC Report — ${site}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:12px;background:#f8fafc;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{max-width:1000px;margin:0 auto;padding:28px}h1{font-size:20px;font-weight:800;margin-bottom:4px}h2{font-size:13px;font-weight:700;background:#f1f5f9;padding:8px 14px;border-left:4px solid #f59e0b;border-radius:0 4px 4px 0;margin:22px 0 10px}table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px}th{background:#1e293b;color:#f8fafc;padding:6px 10px;text-align:center;letter-spacing:.3px}td{border:1px solid #e2e8f0;padding:6px 10px;text-align:center}.g{background:${colBg(85)};color:${colFg(85)};font-weight:700}.a{background:${colBg(70)};color:${colFg(70)};font-weight:700}.r{background:${colBg(50)};color:${colFg(50)};font-weight:700}.left{text-align:left}.img-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.img-grid img{width:130px;height:90px;object-fit:cover;border-radius:4px}footer{margin-top:36px;border-top:1px solid #e2e8f0;padding-top:12px;color:#94a3b8;text-align:center;font-size:10px}@media print{h2{page-break-before:auto}}</style></head><body><div class="page"><h1>📋 ${site} — DC Performance Report</h1><p style="color:#64748b;font-size:11px;margin-bottom:20px">Generated: ${new Date().toLocaleString('en-IN')}</p>`;
+    let body=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>DC Report — ${site}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:12px;background:#f8fafc;color:#1e293b;-webkit-print-color-adjust:exact}.page{max-width:1000px;margin:0 auto;padding:28px}.hdr{background:linear-gradient(135deg,#1e293b,#334155);color:#fff;padding:20px 24px;border-radius:8px;margin-bottom:20px}h1{font-size:20px;font-weight:800;margin-bottom:4px}h2{font-size:13px;font-weight:700;background:#f1f5f9;padding:8px 14px;border-left:4px solid #f59e0b;border-radius:0 4px 4px 0;margin:22px 0 10px}table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px}th{background:#1e293b;color:#f8fafc;padding:6px 10px;text-align:center}td{border:1px solid #e2e8f0;padding:6px 10px;text-align:center}.g{background:${colBg(85)};color:${colFg(85)};font-weight:700}.a{background:${colBg(70)};color:${colFg(70)};font-weight:700}.r{background:${colBg(50)};color:${colFg(50)};font-weight:700}.left{text-align:left}.img-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.img-grid img{width:130px;height:90px;object-fit:cover;border-radius:4px}footer{margin-top:36px;border-top:1px solid #e2e8f0;padding-top:12px;color:#94a3b8;text-align:center;font-size:10px}</style></head><body><div class="page"><div class="hdr"><h1>📋 ${site} — DC Performance Report</h1><p style="color:rgba(255,255,255,.7);font-size:11px;margin-top:4px">Generated: ${new Date().toLocaleString('en-IN')}</p></div>`;
     body+=`<h2>WEEK-BY-WEEK PERFORMANCE</h2><table><tr><th class="left">WEEK</th><th>OVERALL %</th>${AREAS.map(a=>`<th>${ASHORT[a]}</th>`).join('')}<th>PASS</th><th>FAIL</th><th>NA</th></tr>`;
     allRecs.forEach(rec=>{const sv=Number(rec['Overall_Score_%'])||0;const cls=sv>=80?'g':sv>=60?'a':'r';body+=`<tr><td class="left" style="font-weight:600">${fmtW(Number(rec['Week_No']))}</td><td class="${cls}">${sv}%</td>${AREAS.map(a=>{const v=Number(rec[ACOL[a]])||0;const c=v>=80?'g':v>=60?'a':'r';return`<td class="${c}">${v}%</td>`;}).join('')}<td>${rec['Pass_Count']||0}</td><td>${rec['Fail_Count']||0}</td><td>${rec['NA_Count']||0}</td></tr>`;});
     body+=`</table><h2>TOP REPEATED FAILURES (${topFails.length})</h2><table><tr><th>COUNT</th><th class="left">ISSUE</th><th class="left">AREA</th></tr>`;
     topFails.forEach(f=>{body+=`<tr><td style="background:#fee2e2;color:#991b1b;font-weight:700">${f.count}x</td><td class="left">${f.neg}</td><td class="left" style="color:#64748b;font-size:10px">${f.area}</td></tr>`;});
     body+=`</table>`;
-    if(allImgs.length>0){body+=`<h2>EVIDENCE IMAGES (${allImgs.length})</h2><div class="img-grid">${allImgs.map(i=>`<img src="${i.url}" alt="${i.area}" loading="lazy"/>`).join('')}</div>`;}
+    if(allImgs.length>0){body+=`<h2>EVIDENCE IMAGES (${allImgs.length})</h2><div class="img-grid">${allImgs.map(i=>`<img src="${i.url}" loading="lazy"/>`).join('')}</div>`;}
     body+=`<footer>Weekly Audit Scorecard · ${site} · ${new Date().getFullYear()}</footer></div></body></html>`;
     w.document.write(body);w.document.close();setTimeout(()=>w.print(),800);
   };
-
+  const latestDcRec=useMemo(()=>{const dcRecs=records.filter(r=>String(r['Site'])===site).sort((a,b)=>Number(b['Week_No'])-Number(a['Week_No']));return dcRecs[0]||null;},[records,site]);
+  const latestFails=useMemo(()=>{if(!latestDcRec)return[];const ans=parseAns(latestDcRec);const out=[];AREAS.forEach(area=>{Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL'){const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));out.push({area,q,neg:toNeg(q),remark:a.remark||'',imgs,vids});}});});return out;},[latestDcRec]);
   return html`<div class="fi">
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
     <div class="card" style=${{padding:18,marginBottom:20}}>
@@ -1293,63 +1573,24 @@ function WeeklyPerfTab({records,site,setSite,activeWeeks}){
         </tr>`;})}</tbody>
       </table>`}
     </div>
-
-    ${/* ── Improvement Areas with media for selected DC — latest week with data ── */null}
-    ${(()=>{
-      // Find the most recent week this DC has data for
-      const dcRecs=records.filter(r=>String(r['Site'])===site).sort((a,b)=>Number(b['Week_No'])-Number(a['Week_No']));
-      if(!dcRecs.length)return null;
-      const latestRec=dcRecs[0];const latestWk=Number(latestRec['Week_No']);
-      const ans=parseAns(latestRec);
-      const fails=[];
-      AREAS.forEach(area=>{
-        Object.entries(ans[area]||{}).forEach(([q,a])=>{
-          if(a?.answer==='FAIL'){
-            const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));
-            const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));
-            fails.push({area,q,neg:toNeg(q),remark:a.remark||'',imgs,vids});
-          }
-        });
-      });
-      if(!fails.length)return html`<div class="card" style=${{padding:18}}><div style=${{textAlign:'center',padding:24}}><div style=${{fontSize:36,marginBottom:8}}>🎉</div><div style=${{color:C.pass,fontFamily:mono,fontSize:12,fontWeight:700}}>NO FAILURES FOR ${site} IN ${fmtW(latestWk)}</div></div></div>`;
-      return html`<div class="card" style=${{padding:18}}>
-        <${SH} c=${C.fail}>Improvement Areas — ${site} (${fmtW(latestWk)}) — ${fails.length} Failed</${SH}>
-        ${fails.map((f,i)=>{
-          const mediaItems=[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))];
-          return html`<div key=${i} style=${{display:'flex',gap:12,padding:'12px 0',borderBottom:i<fails.length-1?`1px solid ${C.border}18`:'none',alignItems:'flex-start',flexWrap:'wrap'}}>
-            ${/* ── Fail text ── */null}
-            <div style=${{flex:1,minWidth:200}}>
-              <div style=${{display:'flex',gap:8,alignItems:'flex-start',marginBottom:f.remark?6:0}}>
-                <span style=${{color:C.fail,fontSize:15,flexShrink:0,marginTop:1}}>✗</span>
-                <div>
-                  <div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.neg}</div>
-                  <div style=${{color:ACLR[f.area],fontSize:9,fontFamily:mono,fontWeight:600,marginTop:2,letterSpacing:.6}}>${f.area}</div>
-                </div>
-              </div>
-              ${f.remark?html`<div style=${{background:'rgba(234,179,8,.06)',border:`1px solid rgba(234,179,8,.2)`,borderRadius:4,padding:'4px 10px',color:'#fbbf24',fontSize:10,marginTop:4,marginLeft:22}}>📝 ${f.remark}</div>`:''}
+    ${latestFails.length>0?html`<div class="card" style=${{padding:18}}>
+      <${SH} c=${C.fail}>Improvement Areas — ${site} (${fmtW(Number(latestDcRec?.['Week_No']||0))}) — ${latestFails.length} Failed</${SH}>
+      ${latestFails.map((f,i)=>{const mediaItems=[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))];return html`
+        <div key=${i} style=${{display:'flex',gap:12,padding:'12px 0',borderBottom:i<latestFails.length-1?`1px solid ${C.border}18`:'none',alignItems:'flex-start',flexWrap:'wrap'}}>
+          <div style=${{flex:1,minWidth:200}}>
+            <div style=${{display:'flex',gap:8,alignItems:'flex-start',marginBottom:f.remark?6:0}}>
+              <span style=${{color:C.fail,fontSize:15,flexShrink:0,marginTop:1}}>✗</span>
+              <div><div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.neg}</div><div style=${{color:ACLR[f.area]||C.muted,fontSize:9,fontFamily:mono,letterSpacing:.4,marginTop:2}}>${f.area}</div></div>
             </div>
-            ${/* ── Inline media column ── */null}
-            ${mediaItems.length>0?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',flexShrink:0,alignItems:'flex-start'}}>
-              ${f.imgs.map((u,j)=>html`<div key=${j} style=${{position:'relative'}}>
-                <img src=${u}
-                  onClick=${()=>setLb({items:mediaItems,idx:j})}
-                  style=${{width:76,height:76,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.fail}44`,display:'block',transition:'all .15s'}}
-                  onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.fail;e.currentTarget.style.transform='scale(1.06)';}}
-                  onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.fail+'44';e.currentTarget.style.transform='scale(1)';}}
-                  onError=${e=>e.currentTarget.style.display='none'}/>
-              </div>`)}
-              ${f.vids.map((u,j)=>html`<div key=${j}
-                onClick=${()=>setLb({items:mediaItems,idx:f.imgs.length+j})}
-                style=${{width:76,height:76,background:'#0a2030',border:`2px solid ${C.cyan}44`,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:24,gap:2,transition:'border-color .15s'}}
-                onMouseEnter=${e=>e.currentTarget.style.borderColor=C.cyan}
-                onMouseLeave=${e=>e.currentTarget.style.borderColor=C.cyan+'44'}>
-                🎥<span style=${{color:C.cyan,fontSize:8,fontFamily:mono}}>PLAY</span>
-              </div>`)}
-            </div>`:''}
-          </div>`;
-        })}
-      </div>`;
-    })()}
+            ${f.remark?html`<div style=${{marginLeft:24,marginTop:4,paddingLeft:10,borderLeft:'2px solid #fbbf2466',color:'#fbbf24',fontSize:11,fontStyle:'italic'}}><span style=${{color:C.muted,fontSize:9,fontFamily:mono,fontStyle:'normal',display:'block',marginBottom:1}}>REMARK</span>${f.remark}</div>`:''}
+          </div>
+          ${mediaItems.length>0?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',flexShrink:0}}>
+            ${f.imgs.map((u,j)=>html`<img key=${j} src=${u} onClick=${()=>setLb({items:mediaItems,idx:j})} style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.fail}44`,transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.fail;e.currentTarget.style.transform='scale(1.05)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.fail+'44';e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/>`)}
+            ${f.vids.map((u,j)=>html`<div key=${j} onClick=${()=>setLb({items:mediaItems,idx:f.imgs.length+j})} style=${{width:72,height:72,background:'#0a2030',border:`2px solid #06b6d444`,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:22,gap:2}} onMouseEnter=${e=>e.currentTarget.style.borderColor=C.cyan} onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d444'}>🎥<span style=${{color:C.cyan,fontSize:8,fontFamily:mono}}>PLAY</span></div>`)}
+          </div>`:''}
+        </div>`;})
+      }
+    </div>`:''}
   </div>`;
 }
 
@@ -1360,13 +1601,15 @@ function DCFacilityTab({records,week}){
   const[size,setSize]=useState('Large');const[lb,setLb]=useState(null);
   const sites=FMAP[size];
   const siteData=useMemo(()=>sites.map(site=>{
-    const r=records.find(r=>String(r['Site'])===site&&Number(r['Week_No'])===week);
-    if(!r)return{site,score:0,auditor:'—',date:'—',hasData:false,areaScores:{},fails:[],imgs:[]};
-    const ans=parseAns(r);const fails=[];
-    AREAS.forEach(area=>Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL')fails.push({area,neg:toNeg(q),remark:a.remark||''});}));
-    const imgs=[];
-    AREAS.forEach(area=>Object.values(ans[area]||{}).forEach(a=>{(a?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))imgs.push({type:'image',src:u});});}));
-    return{site,score:Number(r['Overall_Score_%'])||0,auditor:String(r['Auditor']||'—'),date:String(r['Audit_Date']||'—'),hasData:true,areaScores:Object.fromEntries(AREAS.map(a=>[a,Number(r[ACOL[a]])||0])),fails,imgs};
+    const siteRecs=records.filter(r=>String(r['Site'])===site&&Number(r['Week_No'])===week);
+    if(!siteRecs.length)return{site,score:0,auditor:'—',date:'—',hasData:false,areaScores:{},fails:[],imgs:[],entryCount:0};
+    const scores=siteRecs.map(r=>Number(r['Overall_Score_%'])||0);
+    const avgScore=Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
+    const areaScores={};AREAS.forEach(area=>{const vals=siteRecs.map(r=>Number(r[ACOL[area]])||0);areaScores[area]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);});
+    const latest=siteRecs[siteRecs.length-1];const ans=parseAns(latest);
+    const fails=[];AREAS.forEach(area=>Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL')fails.push({area,neg:toNeg(q),remark:a.remark||''});}));
+    const imgs=[];AREAS.forEach(area=>Object.values(ans[area]||{}).forEach(a=>{(a?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))imgs.push({type:'image',src:u});});}));
+    return{site,score:avgScore,auditor:String(latest['Auditor']||'—'),date:String(latest['Audit_Date']||'—'),hasData:true,areaScores,fails,imgs,entryCount:siteRecs.length};
   }),[records,sites,week]);
   const audited=siteData.filter(s=>s.hasData);
   const netAvg=audited.length?Math.round(audited.reduce((s,x)=>s+x.score,0)/audited.length):0;
@@ -1379,9 +1622,7 @@ function DCFacilityTab({records,week}){
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
     <div style=${{display:'flex',gap:16,alignItems:'center',marginBottom:24,flexWrap:'wrap'}}>
       <div><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>FACILITY SIZE</div>
-        <div style=${{display:'flex',gap:8}}>
-          ${['Large','Medium','Small'].map(s=>html`<button key=${s} onClick=${()=>setSize(s)} style=${{background:size===s?sizeColor[s]+'20':'transparent',color:size===s?sizeColor[s]:C.muted,border:`2px solid ${size===s?sizeColor[s]:C.border}`,borderRadius:8,padding:'9px 20px',fontFamily:mono,fontSize:11,fontWeight:size===s?700:500,cursor:'pointer',letterSpacing:.8,transition:'all .18s'}}>${s.toUpperCase()}</button>`)}
-        </div>
+        <div style=${{display:'flex',gap:8}}>${['Large','Medium','Small'].map(s=>html`<button key=${s} onClick=${()=>setSize(s)} style=${{background:size===s?sizeColor[s]+'20':'transparent',color:size===s?sizeColor[s]:C.muted,border:`2px solid ${size===s?sizeColor[s]:C.border}`,borderRadius:8,padding:'9px 20px',fontFamily:mono,fontSize:11,fontWeight:size===s?700:500,cursor:'pointer',letterSpacing:.8,transition:'all .18s'}}>${s.toUpperCase()}</button>`)}</div>
       </div>
       <div style=${{marginLeft:'auto',background:`linear-gradient(135deg,${sizeColor[size]}12,${sizeColor[size]}06)`,border:`1px solid ${sizeColor[size]}33`,borderRadius:10,padding:'12px 22px',textAlign:'center',minWidth:160}}>
         <div style=${{color:C.muted,fontSize:8,fontFamily:mono,letterSpacing:1.5,marginBottom:4}}>${size.toUpperCase()} AVG — ${fmtW(week)}</div>
@@ -1395,16 +1636,17 @@ function DCFacilityTab({records,week}){
         ${s.hasData?html`<div style=${{position:'absolute',top:0,left:0,right:0,height:2,background:scCol(s.score)}}/>`:''}
         <div style=${{fontFamily:mono,fontSize:12,fontWeight:700,color:C.text,marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${s.site}</div>
         <div style=${{fontSize:26,fontFamily:mono,fontWeight:700,color:s.hasData?scCol(s.score):C.muted,lineHeight:1,marginBottom:6}}>${s.hasData?s.score+'%':'—'}</div>
-        <div style=${{fontSize:10,color:C.muted,lineHeight:1.8}}><div>${s.date}</div><div style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${s.hasData?s.auditor:'Not audited'}</div></div>
+        <div style=${{fontSize:10,color:C.muted,lineHeight:1.8}}><div>${s.date}</div><div style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${s.hasData?s.auditor:'Not audited'}</div>${s.entryCount>1?html`<div style=${{color:C.accent,fontSize:9}}>${s.entryCount} entries avg</div>`:''}</div>
       </div>`)}
     </div>
     ${audited.length>0?html`<div>
       <div class="card" style=${{padding:16,marginBottom:20}}><${SH}>${size} Segment — Area Averages</${SH}>${areaAvgs.map(a=>html`<div key=${a.area} style=${{marginBottom:12}}><div style=${{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style=${{fontSize:10,color:C.text,fontFamily:mono}}><b style=${{color:a.color}}>${a.short}</b> ${a.area}</span><span style=${{fontSize:14,color:a.color,fontFamily:mono,fontWeight:700}}>${a.avg}%</span></div><${PBar} v=${a.avg} color=${a.color} h=${6}/></div>`)}</div>
       ${commonFails.length>0?html`<div class="card" style=${{padding:16,marginBottom:20}}><${SH} c=${C.fail}>Common Issues — ${size} Segment</${SH}>${commonFails.map((item,i)=>html`<div key=${i} style=${{display:'flex',gap:12,padding:'10px 0',borderBottom:i<commonFails.length-1?`1px solid ${C.border}20`:'none',alignItems:'flex-start'}}><div style=${{background:C.fail+'20',color:C.fail,border:`1px solid ${C.fail}44`,borderRadius:4,padding:'3px 10px',fontFamily:mono,fontSize:13,fontWeight:700,flexShrink:0,minWidth:42,textAlign:'center'}}>${item.count}</div><div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:600}}>${item.neg}</div></div>`)}</div>`:''}
-      ${audited.some(s=>s.imgs.length>0)?html`<div class="card" style=${{padding:16}}><${SH}>Image Gallery — ${size} DCs</${SH}>${audited.filter(s=>s.imgs.length>0).map(s=>html`<div key=${s.site} style=${{marginBottom:16}}><div style=${{color:C.muted,fontSize:10,fontFamily:mono,fontWeight:700,marginBottom:8}}>${s.site}</div><div style=${{display:'flex',flexWrap:'wrap',gap:8}}>${s.imgs.map((img,j)=>html`<img key=${j} src=${img.src} onClick=${()=>setLb({items:s.imgs,idx:j})} style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.border}`,transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=sizeColor[size];e.currentTarget.style.transform='scale(1.06)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform='scale(1)';}}/>`)}</div></div>`)}</div>`:''}
+      ${audited.some(s=>s.imgs.length>0)?html`<div class="card" style=${{padding:16}}><${SH}>Image Gallery — ${size} DCs</${SH}>${audited.filter(s=>s.imgs.length>0).map(s=>html`<div key=${s.site} style=${{marginBottom:16}}><div style=${{color:C.muted,fontSize:10,fontFamily:mono,fontWeight:700,marginBottom:8}}>${s.site}</div><div style=${{display:'flex',flexWrap:'wrap',gap:8}}>${s.imgs.map((img,j)=>html`<img key=${j} src=${img.src} onClick=${()=>setLb({items:s.imgs,idx:j})} style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.border}`,transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=sizeColor[size];e.currentTarget.style.transform='scale(1.06)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/>`)}</div></div>`)}</div>`:''}
     </div>`:''}
   </div>`;
 }
+
 
 // ════════════════════════════════════════════════════════
 //  DASHBOARD SHELL
@@ -1497,6 +1739,7 @@ function App(){
   if(page==='landing')return html`<${Landing} onFill=${()=>setPage('fill')} onView=${()=>setPage('view')}/>`;
   if(page==='fill')   return html`<${FillScorecard} onBack=${()=>setPage('landing')}/>`;
   if(page==='view')   return html`<${Dashboard} onBack=${()=>setPage('landing')}/>`;
+  if(page==='partials')return html`<${PartialEntriesView} onBack=${()=>setPage('landing')}/>`;
   return null;
 }
 render(html`<${App}/>`,document.getElementById('app'));
