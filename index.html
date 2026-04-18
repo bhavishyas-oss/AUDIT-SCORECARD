@@ -1428,6 +1428,165 @@ function OverviewTab({records,week}){
 }
 
 // ════════════════════════════════════════════════════════
+//  DC COLLATED REPORT — generates print-to-PDF HTML
+// ════════════════════════════════════════════════════════
+function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
+  const score=Number(rec?.['Overall_Score_%'])||0;
+  const auditor=String(rec?.['Auditor']||'—');
+  const date=String(rec?.['Audit_Date']||'—');
+  const passC=Number(rec?.['Pass_Count'])||0;
+  const failC=Number(rec?.['Fail_Count'])||0;
+  const naC=Number(rec?.['NA_Count'])||0;
+  const scBg=v=>v>=80?'#d1fae5':v>=60?'#fef3c7':'#fee2e2';
+  const scFg=v=>v>=80?'#065f46':v>=60?'#92400e':'#991b1b';
+  const scTxt=v=>v>=80?'GOOD':v>=60?'MONITOR':'ACTION NEEDED';
+
+  // Build area score rows
+  const areaRows=AREAS.map(area=>{
+    const s=Number(rec?.[ACOL[area]])||0;
+    return `<tr><td>${area}</td><td style="background:${scBg(s)};color:${scFg(s)};font-weight:700;text-align:center">${s}%</td><td style="text-align:center;color:${scFg(s)}">${scTxt(s)}</td></tr>`;
+  }).join('');
+
+  // Build improvement areas
+  const improvementRows=fails.length===0
+    ?'<tr><td colspan="3" style="text-align:center;color:#16a34a;padding:18px">✓ No failures — excellent performance!</td></tr>'
+    :fails.map(f=>`<tr>
+        <td style="color:#991b1b;font-weight:600">${f.neg}</td>
+        <td style="color:#64748b;font-size:10px">${f.area}</td>
+        <td style="color:#92400e;font-style:italic">${f.remark||'—'}</td>
+      </tr>`).join('');
+
+  // Build snap collated
+  const snapSections=AREAS.map(area=>{
+    const aMedia=allMedia.filter(m=>m.area===area);
+    if(!aMedia.length)return'';
+    const imgs=aMedia.filter(m=>m.type==='image').map(m=>
+      `<img src="${m.src}" style="width:150px;height:110px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0" loading="lazy" onerror="this.style.display='none'"/>`
+    ).join('');
+    const vids=aMedia.filter(m=>m.type==='video').map(m=>{
+      const r=resolveVideoUrl(m.url||m.src);
+      if(!r)return'';
+      const href=r.type==='drive'?r.view:(r.src||m.url||m.src);
+      return `<a href="${href}" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;width:150px;height:110px;background:#0f172a;border:1px solid #1e40af;border-radius:6px;color:#60a5fa;text-decoration:none;font-size:24px">🎥<span style="font-size:9px;font-family:monospace">VIEW VIDEO</span></a>`;
+    }).join('');
+    if(!imgs&&!vids)return'';
+    return `<div style="margin-bottom:18px">
+      <div style="font-weight:700;font-size:11px;color:#1C856F;padding:5px 10px;background:#f0fdf4;border-left:3px solid #1C856F;margin-bottom:10px">${area}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${imgs}${vids}</div>
+    </div>`;
+  }).join('');
+
+  // Build full checklist
+  const checklistSections=AREAS.map(area=>{
+    const qs=answers[area]||{};
+    const rows=(QS[area]||[]).map(q=>{
+      const a=qs[q]||{};
+      const ansColor=a.answer==='PASS'?'#16a34a':a.answer==='FAIL'?'#dc2626':'#64748b';
+      const rowBg=a.answer==='FAIL'?'#fff1f2':'transparent';
+      return `<tr style="background:${rowBg}">
+        <td style="font-size:11px;line-height:1.5;color:${a.answer==='FAIL'?'#991b1b':'#1e293b'}">${q}</td>
+        <td style="text-align:center;font-weight:700;color:${ansColor};white-space:nowrap;font-family:monospace">${a.answer||'—'}</td>
+        <td style="font-size:10px;color:#64748b;font-style:italic">${a.remark||''}</td>
+      </tr>`;
+    }).join('');
+    return`<div style="margin-bottom:20px;page-break-inside:avoid">
+      <div style="font-weight:700;font-size:11px;color:#1C856F;padding:6px 12px;background:#f0fdf4;border-left:4px solid #1C856F;margin-bottom:8px">${area}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:#f8fafc">
+          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b">QUESTION</th>
+          <th style="text-align:center;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b;width:80px">RESULT</th>
+          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b">REMARK</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Shadowfax Audit Report — ${site} ${fmtW(week)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:12px;background:#fff;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.wrap{max-width:1050px;margin:0 auto;padding:28px 32px}
+.header{background:linear-gradient(135deg,#0f4235,#1C856F);color:#fff;padding:24px 30px;border-radius:10px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.header h1{font-size:22px;font-weight:800;margin-bottom:4px}
+.header .sub{color:rgba(255,255,255,.75);font-size:11px;line-height:1.8}
+.score-badge{background:#fff;border-radius:10px;padding:14px 20px;text-align:center;min-width:120px;flex-shrink:0}
+.score-badge .pct{font-size:40px;font-weight:900;color:${scFg(score)};line-height:1}
+.score-badge .lbl{font-size:9px;font-family:monospace;letter-spacing:1.5px;color:#64748b;margin-top:4px}
+.meta-grid{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.meta-chip{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 14px;font-size:11px}
+.meta-chip b{display:block;color:#64748b;font-size:9px;letter-spacing:1px;margin-bottom:2px}
+.stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+.stat-box{flex:1;min-width:100px;border-radius:8px;padding:12px 16px;text-align:center;border:1px solid}
+.section-title{font-size:13px;font-weight:700;color:#1C856F;border-left:4px solid #1C856F;padding:6px 14px;background:#f0fdf4;border-radius:0 5px 5px 0;margin:24px 0 12px}
+table.main{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px}
+table.main th{background:#1C856F;color:#fff;padding:7px 12px;text-align:left;font-size:10px;letter-spacing:.5px}
+table.main td{border:1px solid #e2e8f0;padding:7px 12px;vertical-align:top}
+table.main tbody tr:hover{background:#f8fafc}
+.footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;text-align:center;color:#94a3b8;font-size:10px}
+@media print{.no-print{display:none!important}.wrap{padding:14px}@page{margin:1cm}}
+</style></head><body><div class="wrap">
+
+<div class="header">
+  <div>
+    <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.6);margin-bottom:4px">SHADOWFAX LOGISTICS — WEEKLY AUDIT</div>
+    <h1>📋 ${site}</h1>
+    <div class="sub">
+      Week ${fmtW(week)} &nbsp;|&nbsp; Date: ${date} &nbsp;|&nbsp; Auditor: ${auditor}<br/>
+      Generated: ${new Date().toLocaleString('en-IN')}
+    </div>
+  </div>
+  <div class="score-badge">
+    <div class="pct" style="color:${scFg(score)}">${score}%</div>
+    <div class="lbl">OVERALL SCORE</div>
+    <div style="font-size:10px;font-weight:700;color:${scFg(score)};margin-top:4px">${scTxt(score)}</div>
+  </div>
+</div>
+
+<div class="meta-grid">
+  <div class="meta-chip"><b>PASS</b><span style="color:#16a34a;font-weight:700;font-size:14px">${passC}</span></div>
+  <div class="meta-chip"><b>FAIL</b><span style="color:#dc2626;font-weight:700;font-size:14px">${failC}</span></div>
+  <div class="meta-chip"><b>N/A</b><span style="color:#64748b;font-weight:700;font-size:14px">${naC}</span></div>
+  <div class="meta-chip"><b>COMPLIANCE</b><span style="font-weight:700;font-size:14px;color:${scFg(score)}">${score}%</span></div>
+</div>
+
+<div class="section-title">A. AREA-WISE PERFORMANCE</div>
+<table class="main">
+  <thead><tr><th>OPERATIONAL AREA</th><th style="width:100px;text-align:center">SCORE</th><th style="width:140px;text-align:center">STATUS</th></tr></thead>
+  <tbody>${areaRows}</tbody>
+</table>
+
+<div class="section-title">B. IMPROVEMENT AREAS (${fails.length} issue${fails.length!==1?'s':''})</div>
+<table class="main">
+  <thead><tr><th>IDENTIFIED ISSUE</th><th style="width:180px">AREA</th><th style="width:200px">REMARK</th></tr></thead>
+  <tbody>${improvementRows}</tbody>
+</table>
+
+<div class="section-title" style="page-break-before:always">C. SNAP COLLATED — EVIDENCE MEDIA</div>
+${snapSections||'<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>'}
+
+<div class="section-title">D. FULL CHECKLIST RESPONSES</div>
+${checklistSections}
+
+<div class="footer">
+  Shadowfax Logistics Operations · Weekly Audit Scorecard · ${site} · ${fmtW(week)} · ${new Date().toLocaleDateString('en-IN')}
+</div>
+</div>
+<div class="no-print" style="position:fixed;bottom:20px;right:20px;display:flex;gap:10px">
+  <button onclick="window.print()" style="background:#1C856F;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(28,133,111,.4)">🖨 PRINT / SAVE AS PDF</button>
+  <button onclick="window.close()" style="background:#64748b;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:14px;cursor:pointer">✕ CLOSE</button>
+</div>
+</body></html>`;
+
+  const w=window.open('','_blank');
+  if(!w){alert('Popup blocked. Please allow popups for this site and try again.');return;}
+  w.document.write(html);w.document.close();
+  // Auto-trigger print after images load
+  setTimeout(()=>w.focus(),400);
+}
+
+// ════════════════════════════════════════════════════════
 //  TAB 2: DC DETAIL VIEW
 // ════════════════════════════════════════════════════════
 function DCDetailTab({records,week,site,setSite}){
@@ -1488,8 +1647,17 @@ function DCDetailTab({records,week,site,setSite}){
       </div>
     </div>`:html`<div class="card" style=${{padding:36,textAlign:'center',marginBottom:20}}><${Empty} icon="📭" title="NO AUDIT DATA" sub=${site+' — '+fmtW(week)}/></div>`}
     ${rec?html`<div>
-      <div style=${{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
-        ${['performance','improvement','snaps','checklist'].map(v=>html`<button key=${v} class=${'sub-btn'+(sub===v?' act':'')} onClick=${()=>setSub(v)}>${v==='performance'?'📊 PERFORMANCE':v==='improvement'?'⚠ IMPROVEMENT AREAS':v==='snaps'?'📸 SNAP COLLATED':'☑ CHECKLIST'}</button>`)}
+      <div style=${{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap',alignItems:'center',justifyContent:'space-between'}}>
+        <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
+          ${['performance','improvement','snaps','checklist'].map(v=>html`<button key=${v} class=${'sub-btn'+(sub===v?' act':'')} onClick=${()=>setSub(v)}>${v==='performance'?'📊 PERFORMANCE':v==='improvement'?'⚠ IMPROVEMENT AREAS':v==='snaps'?'📸 SNAP COLLATED':'☑ CHECKLIST'}</button>`)}
+        </div>
+        <button
+          onClick=${()=>generateDCReport(site,week,rec,answers,areaScores,fails,allMedia)}
+          style=${{background:'linear-gradient(135deg,#1C856F,#059669)',color:'#fff',border:'none',borderRadius:8,padding:'10px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:.6,boxShadow:'0 4px 16px rgba(28,133,111,.35)',flexShrink:0,transition:'all .2s'}}
+          onMouseEnter=${e=>{e.currentTarget.style.transform='translateY(-1px)';e.currentTarget.style.boxShadow='0 6px 20px rgba(28,133,111,.5)';}}
+          onMouseLeave=${e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 4px 16px rgba(28,133,111,.35)';}}>
+          📄 DOWNLOAD COLLATED REPORT
+        </button>
       </div>
       ${sub==='performance'?html`<div class="card" style=${{padding:18}} class="fi">
         <${SH}>Area Performance — ${site}</${SH}>
