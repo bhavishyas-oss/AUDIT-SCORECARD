@@ -8,57 +8,57 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#0d1117;color:#e6edf3;font-family:'IBM Plex Sans',-apple-system,sans-serif;overflow-x:hidden}
+html,body{height:100%;background:#0f4a3a;color:#fff;font-family:'IBM Plex Sans',-apple-system,sans-serif;overflow-x:hidden}
 #app{min-height:100vh}
 ::-webkit-scrollbar{width:5px;height:5px}
-::-webkit-scrollbar-track{background:#0d1117}
-::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:#484f58}
+::-webkit-scrollbar-track{background:#0a3328}
+::-webkit-scrollbar-thumb{background:rgba(233,223,67,.4);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(233,223,67,.7)}
 input,select,textarea,button{font-family:inherit}
 input[type=date]{color-scheme:dark}
-select option{background:#161b22;color:#e6edf3}
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px)}
+select option{background:#0d2b22;color:#fff}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.4)}50%{box-shadow:0 0 0 8px rgba(245,158,11,0)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(233,223,67,.4)}50%{box-shadow:0 0 0 8px rgba(233,223,67,0)}}
 .fi{animation:fadeUp .22s ease-out}
 .spin{display:inline-block;animation:spin .8s linear infinite}
 .blink{animation:blink 1s infinite}
-.tab-bar{display:flex;overflow-x:auto;background:#161b22;border-bottom:2px solid #30363d;padding:0 20px;scrollbar-width:none;gap:4px}
+.tab-bar{display:flex;overflow-x:auto;background:rgba(0,0,0,.35);border-bottom:2px solid rgba(255,255,255,.12);padding:0 20px;scrollbar-width:none;gap:4px}
 .tab-bar::-webkit-scrollbar{display:none}
-.tab-btn{background:transparent;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;padding:15px 22px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:#8b949e;cursor:pointer;white-space:nowrap;transition:all .18s;letter-spacing:.8px;position:relative}
-.tab-btn::after{content:'';position:absolute;bottom:-2px;left:0;right:0;height:3px;background:#f59e0b;transform:scaleX(0);transition:transform .2s}
-.tab-btn.act{color:#f59e0b;font-weight:700}
+.tab-btn{background:transparent;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;padding:15px 22px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;color:rgba(255,255,255,.55);cursor:pointer;white-space:nowrap;transition:all .18s;letter-spacing:.8px;position:relative}
+.tab-btn::after{content:'';position:absolute;bottom:-2px;left:0;right:0;height:3px;background:#E9DF43;transform:scaleX(0);transition:transform .2s}
+.tab-btn.act{color:#E9DF43;font-weight:700}
 .tab-btn.act::after{transform:scaleX(1)}
-.tab-btn:hover:not(.act){color:#e6edf3}
-.sub-btn{background:transparent;border:1px solid #30363d;border-radius:6px;padding:9px 16px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;color:#8b949e;cursor:pointer;letter-spacing:.6px;transition:all .18s}
-.sub-btn.act{background:rgba(245,158,11,.12);color:#f59e0b;border-color:#f59e0b66;font-weight:700}
-.sub-btn:hover:not(.act){color:#e6edf3;border-color:#484f58;background:#ffffff08}
-.card{background:#161b22;border:1px solid #30363d;border-radius:10px}
+.tab-btn:hover:not(.act){color:#fff}
+.sub-btn{background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:9px 16px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;color:rgba(255,255,255,.55);cursor:pointer;letter-spacing:.6px;transition:all .18s}
+.sub-btn.act{background:rgba(233,223,67,.15);color:#E9DF43;border-color:#E9DF4388;font-weight:700}
+.sub-btn:hover:not(.act){color:#fff;border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.06)}
+.card{background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.14);border-radius:10px}
 table.dt{width:100%;border-collapse:collapse;font-size:12px}
-table.dt th{background:#0d1117;color:#8b949e;padding:10px 14px;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.8px;border-bottom:2px solid #30363d;white-space:nowrap;position:sticky;top:0;z-index:2}
-table.dt td{padding:8px 14px;border-bottom:1px solid rgba(48,54,61,.3);vertical-align:middle}
-table.dt tbody tr:hover td{background:rgba(22,27,34,.6)}
-.pbar-wrap{background:#30363d;border-radius:4px;overflow:hidden}
+table.dt th{background:rgba(0,0,0,.4);color:rgba(255,255,255,.6);padding:10px 14px;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.8px;border-bottom:2px solid rgba(255,255,255,.15);white-space:nowrap;position:sticky;top:0;z-index:2}
+table.dt td{padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.07);vertical-align:middle;color:#fff}
+table.dt tbody tr:hover td{background:rgba(255,255,255,.06)}
+.pbar-wrap{background:rgba(0,0,0,.35);border-radius:4px;overflow:hidden}
 .pbar-fill{height:100%;border-radius:4px;transition:width .5s ease}
-.tgl{display:flex;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:3px;gap:2px}
-.tgl-btn{border:none;background:transparent;color:#8b949e;padding:6px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;cursor:pointer;border-radius:4px;transition:all .15s;letter-spacing:.6px}
-.tgl-btn.on{background:#f59e0b22;color:#f59e0b;font-weight:700}
-.tgl-btn:hover:not(.on){background:#ffffff08;color:#e6edf3}
-.stat-card{background:linear-gradient(135deg,#161b22 0%,#1a2030 100%);border-radius:10px;padding:18px;border:1px solid #30363d;position:relative;overflow:hidden}
+.tgl{display:flex;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:3px;gap:2px}
+.tgl-btn{border:none;background:transparent;color:rgba(255,255,255,.5);padding:6px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;cursor:pointer;border-radius:4px;transition:all .15s;letter-spacing:.6px}
+.tgl-btn.on{background:rgba(233,223,67,.2);color:#E9DF43;font-weight:700}
+.tgl-btn:hover:not(.on){background:rgba(255,255,255,.08);color:#fff}
+.stat-card{background:rgba(0,0,0,.25);border-radius:10px;padding:18px;border:1px solid rgba(255,255,255,.14);position:relative;overflow:hidden}
 .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
-.stat-card.amber::before{background:linear-gradient(90deg,#f59e0b,#d97706)}
-.stat-card.green::before{background:linear-gradient(90deg,#10b981,#059669)}
-.stat-card.red::before{background:linear-gradient(90deg,#ef4444,#dc2626)}
-.stat-card.blue::before{background:linear-gradient(90deg,#3b82f6,#2563eb)}
+.stat-card.amber::before{background:linear-gradient(90deg,#E9DF43,#c9c030)}
+.stat-card.green::before{background:linear-gradient(90deg,#4ade80,#22c55e)}
+.stat-card.red::before{background:linear-gradient(90deg,#f87171,#ef4444)}
+.stat-card.blue::before{background:linear-gradient(90deg,#60a5fa,#3b82f6)}
 .rank{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;flex-shrink:0}
-.rank-1{background:linear-gradient(135deg,#fbbf24,#d97706);color:#000}
+.rank-1{background:linear-gradient(135deg,#E9DF43,#b8b200);color:#000}
 .rank-2{background:linear-gradient(135deg,#94a3b8,#64748b);color:#000}
 .rank-3{background:linear-gradient(135deg,#cd7c2b,#92400e);color:#fff}
 .badge{display:inline-flex;align-items:center;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-weight:700}
-.landing-bg{min-height:100vh;background:#0d1117;background-image:linear-gradient(rgba(245,158,11,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(245,158,11,.03) 1px,transparent 1px);background-size:60px 60px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative}
-.landing-bg::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(245,158,11,.06) 0%,transparent 70%);pointer-events:none}
+.landing-bg{min-height:100vh;background:linear-gradient(160deg,#0f4a3a 0%,#1C856F 55%,#0a3328 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
+.landing-bg::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 70% 50% at 30% 40%,rgba(233,223,67,.06) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 80% 70%,rgba(255,255,255,.03) 0%,transparent 50%);pointer-events:none}
 @media(max-width:640px){.hide-sm{display:none!important}}
 @media(max-width:900px){.col-2{grid-template-columns:1fr!important}}
 @media print{.no-print{display:none!important}}
@@ -116,9 +116,9 @@ const QS={
 // ════════════════════════════════════════════════════════
 //  THEME
 // ════════════════════════════════════════════════════════
-const C={bg:'#0d1117',card:'#161b22',border:'#30363d',accent:'#f59e0b',abl:'rgba(245,158,11,.1)',
-  text:'#e6edf3',muted:'#8b949e',pass:'#10b981',fail:'#ef4444',na:'#6b7280',
-  blue:'#3b82f6',purple:'#8b5cf6',cyan:'#06b6d4'};
+const C={bg:'#0f4a3a',card:'rgba(0,0,0,.28)',border:'rgba(255,255,255,.15)',accent:'#E9DF43',abl:'rgba(233,223,67,.12)',
+  text:'#FFFFFF',muted:'rgba(255,255,255,.55)',pass:'#4ade80',fail:'#f87171',na:'rgba(255,255,255,.35)',
+  blue:'#60a5fa',purple:'#c084fc',cyan:'#22d3ee'};
 const mono="'IBM Plex Mono',monospace";
 
 // ════════════════════════════════════════════════════════
@@ -503,7 +503,7 @@ function VideoPlayer({src,name}){
   if(resolved.type==='blob'){
     if(phase==='error'){
       return html`<div style=${{display:'flex',flexDirection:'column',width:'100%',gap:12}}>
-        <div style=${{background:'#0d1117',border:`1px solid ${C.fail}33`,borderRadius:10,padding:'28px 20px',textAlign:'center'}}>
+        <div style=${{background:'rgba(0,0,0,.4)',border:`1px solid ${C.fail}33`,borderRadius:10,padding:'28px 20px',textAlign:'center'}}>
           <div style=${{fontSize:44,marginBottom:12,opacity:.3}}>🎥</div>
           <div style=${{color:'#fca5a5',fontFamily:mono,fontSize:12,fontWeight:700,marginBottom:10,letterSpacing:.8}}>VIDEO UNAVAILABLE</div>
           <div style=${{color:C.muted,fontSize:11,lineHeight:1.8,maxWidth:360,margin:'0 auto',marginBottom:16}}>
@@ -701,39 +701,53 @@ function UploadModal({done,total,phase}){
 // ════════════════════════════════════════════════════════
 //  LANDING
 // ════════════════════════════════════════════════════════
+// Shadowfax logo as SVG data URI — defined outside html`` tag to avoid htm SVG parsing issues
+const SHADOWFAX_LOGO = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120">' +
+  '<polygon points="10,18 58,62 40,62 40,90 10,55" fill="#c9d624"/>' +
+  '<polygon points="40,62 72,35 72,62" fill="#9aaa10" opacity=".9"/>' +
+  '<text x="88" y="74" font-family="Arial Black,Impact,Arial,sans-serif" ' +
+    'font-size="52" font-weight="900" fill="#1C856F" letter-spacing="1">SHADOWFAX</text>' +
+  '<text x="490" y="28" font-family="Arial,sans-serif" font-size="13" ' +
+    'fill="#1C856F" opacity=".8">TM</text>' +
+  '<text x="90" y="96" font-family="Georgia,serif" font-size="18" ' +
+    'font-style="italic" font-weight="700" fill="#1C856F">Think ahead!</text>' +
+  '</svg>'
+);
+
 function Landing({onFill,onView}){
   return html`<div class="landing-bg">
-    <div style=${{position:'relative',zIndex:1,textAlign:'center',width:'100%',maxWidth:660}}>
-      <div style=${{display:'flex',justifyContent:'center',marginBottom:48}}>
-        <div style=${{background:'linear-gradient(135deg,#f59e0b22,#d9770611)',border:`1px solid #f59e0b33`,borderRadius:12,padding:'8px 24px',display:'inline-flex',alignItems:'center',gap:10}}>
-          <div style=${{width:6,height:6,borderRadius:'50%',background:C.accent,animation:'pulse 2s infinite'}}/>
-          <span style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:3,fontWeight:600}}>LOGISTICS OPERATIONS</span>
+    <div style=${{position:'relative',zIndex:1,textAlign:'center',width:'100%',maxWidth:680}}>
+      <div style=${{display:'flex',justifyContent:'center',marginBottom:36}}>
+        <div style=${{background:'#fff',borderRadius:16,padding:'18px 40px',boxShadow:'0 8px 40px rgba(0,0,0,.25)',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
+          <img src=${SHADOWFAX_LOGO} style=${{width:"clamp(260px,50vw,400px)",height:"auto",display:"block"}} alt="Shadowfax"/>
         </div>
       </div>
-      <h1 style=${{fontFamily:mono,fontWeight:700,lineHeight:1.05,margin:'0 0 8px',letterSpacing:-2}}>
-        <span style=${{display:'block',fontSize:12,color:C.muted,letterSpacing:4,fontWeight:400,marginBottom:14,fontFamily:mono}}>DISTRIBUTION CENTER AUDIT SYSTEM</span>
-        <span style=${{display:'block',fontSize:'clamp(36px,7vw,64px)',color:C.text,textTransform:'uppercase'}}>WEEKLY AUDIT</span>
-        <span style=${{display:'block',fontSize:'clamp(36px,7vw,64px)',background:'linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',textTransform:'uppercase'}}>SCORECARD</span>
-      </h1>
-      <div style=${{display:'flex',gap:16,flexWrap:'wrap',justifyContent:'center',marginTop:44,marginBottom:52}}>
+      <div style=${{marginBottom:8}}>
+        <div style=${{color:'rgba(255,255,255,.65)',fontFamily:mono,fontSize:10,letterSpacing:4,marginBottom:12}}>OPERATIONS MANAGEMENT SYSTEM</div>
+        <h1 style=${{fontFamily:mono,fontWeight:800,fontSize:'clamp(30px,6vw,54px)',color:'#FFFFFF',lineHeight:1.05,letterSpacing:-1,textTransform:'uppercase',margin:0}}>
+          WEEKLY AUDIT<br/><span style=${{color:'#E9DF43'}}>SCORECARD</span>
+        </h1>
+      </div>
+      <div style=${{display:'flex',gap:18,flexWrap:'wrap',justifyContent:'center',marginTop:46,marginBottom:50}}>
         <button onClick=${onView}
-          style=${{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#000',border:'none',borderRadius:12,padding:'20px 44px',fontSize:16,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:.8,minWidth:220,boxShadow:'0 8px 32px rgba(245,158,11,.35)',transition:'all .2s'}}
-          onMouseEnter=${e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 12px 40px rgba(245,158,11,.5)';}}
-          onMouseLeave=${e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 8px 32px rgba(245,158,11,.35)';}}>
+          style=${{background:'#E9DF43',color:'#000',border:'none',borderRadius:12,padding:'20px 48px',fontSize:16,fontFamily:mono,fontWeight:800,cursor:'pointer',letterSpacing:.8,minWidth:220,boxShadow:'0 8px 30px rgba(233,223,67,.45)',transition:'all .2s'}}
+          onMouseEnter=${e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 12px 40px rgba(233,223,67,.6)';}}
+          onMouseLeave=${e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 8px 30px rgba(233,223,67,.45)';}}>
           ▤ VIEW DASHBOARD
         </button>
         <button onClick=${onFill}
-          style=${{background:'transparent',color:C.text,border:`2px solid ${C.border}`,borderRadius:12,padding:'20px 44px',fontSize:16,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:.8,minWidth:220,transition:'all .2s'}}
-          onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.muted;e.currentTarget.style.background='rgba(255,255,255,.04)';e.currentTarget.style.transform='translateY(-2px)';}}
-          onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.background='transparent';e.currentTarget.style.transform='translateY(0)';}}>
+          style=${{background:'transparent',color:'#fff',border:'2px solid rgba(255,255,255,.45)',borderRadius:12,padding:'20px 48px',fontSize:16,fontFamily:mono,fontWeight:700,cursor:'pointer',letterSpacing:.8,minWidth:220,transition:'all .2s'}}
+          onMouseEnter=${e=>{e.currentTarget.style.borderColor='#fff';e.currentTarget.style.background='rgba(255,255,255,.08)';e.currentTarget.style.transform='translateY(-2px)';}}
+          onMouseLeave=${e=>{e.currentTarget.style.borderColor='rgba(255,255,255,.45)';e.currentTarget.style.background='transparent';e.currentTarget.style.transform='translateY(0)';}}>
           ✎ FILL SCORECARD
         </button>
       </div>
-      <div style=${{display:'flex',gap:0,flexWrap:'wrap',justifyContent:'center',borderTop:`1px solid ${C.border}`,paddingTop:28}}>
+      <div style=${{display:'flex',gap:0,flexWrap:'wrap',justifyContent:'center',borderTop:'1px solid rgba(255,255,255,.15)',paddingTop:28}}>
         ${[['23','DISTRIBUTION CENTERS'],['59','AUDIT QUESTIONS'],['6','OPERATIONAL AREAS']].map(([n,l],i)=>html`
-          <div key=${i} style=${{padding:'0 36px',borderRight:i<2?`1px solid ${C.border}`:'none',textAlign:'center'}}>
-            <div style=${{color:C.accent,fontFamily:mono,fontSize:22,fontWeight:700}}>${n}</div>
-            <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginTop:3}}>${l}</div>
+          <div key=${i} style=${{padding:'0 36px',borderRight:i<2?'1px solid rgba(255,255,255,.15)':'none',textAlign:'center'}}>
+            <div style=${{color:'#E9DF43',fontFamily:mono,fontSize:22,fontWeight:700}}>${n}</div>
+            <div style=${{color:'rgba(255,255,255,.55)',fontSize:9,fontFamily:mono,letterSpacing:1.5,marginTop:3}}>${l}</div>
           </div>`)}
       </div>
     </div>
@@ -775,7 +789,7 @@ function LoginPage({onSuccess,onBack}){
     sub:{color:C.muted,fontSize:12},
     field:{marginBottom:18},
     label:{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,display:'block',marginBottom:8},
-    inp:{width:'100%',background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 14px',fontSize:14,outline:'none'},
+    inp:{width:'100%',background:'rgba(0,0,0,.35)',color:'#fff',border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 14px',fontSize:14,outline:'none'},
     err:{background:C.fail+'18',border:`1px solid ${C.fail}33`,borderRadius:8,padding:'10px 14px',color:C.fail,fontSize:12,marginBottom:16,lineHeight:1.5},
     btn:{width:'100%',background:loading?C.border:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'15px 0',fontSize:15,fontFamily:mono,fontWeight:700,cursor:loading?'default':'pointer',letterSpacing:1},
     back:{width:'100%',background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 0',fontFamily:mono,fontSize:12,cursor:'pointer',marginTop:10},
@@ -934,16 +948,28 @@ function FillScorecard({onBack}){
     const sid=makeSessionId(info.site,info.week,info.auditor);
     setSubmissionId(sid);setResumeLoading(true);
     try{
+      // Fetch by site + week + auditor — date within the week is sufficient to resolve the right record
       const result=await fetchRecord(info.site,info.week,info.auditor);
       if(result&&result.ok&&result.record){
         const rec=result.record;
-        try{const ex=JSON.parse(String(rec['Answers_JSON']||'{}'));setAns(ex);}catch(_){}
-        const SMAP={'IOS_Status':'INBOUND OUTBOUND STAGING','BBB_Status':'BBB AREA','PSA_Status':'PRIMARY SORTING AREA','SSA_Status':'SECONDARY SORTING AREA','EXC_Status':'EXCEPTION AREA','VOL_Status':'VOLUMETRIC HANDLING'};
+        // Pre-fill all saved answers exactly as last stored
+        try{const ex=JSON.parse(String(rec['Answers_JSON']||'{}'));if(ex&&typeof ex==='object')setAns(ex);}catch(_){}
+        // Restore completed sections from boolean status flags
+        const SMAP={
+          'IOS_Status':'INBOUND OUTBOUND STAGING',
+          'BBB_Status':'BBB AREA',
+          'PSA_Status':'PRIMARY SORTING AREA',
+          'SSA_Status':'SECONDARY SORTING AREA',
+          'EXC_Status':'EXCEPTION AREA',
+          'VOL_Status':'VOLUMETRIC HANDLING'
+        };
         const completed=Object.keys(SMAP).filter(k=>{const v=rec[k];return v===true||String(v).toLowerCase()==='true';}).map(k=>SMAP[k]);
         setDoneAr(completed);
+        // Use the stored submission ID for all subsequent saves
         if(rec['Submission_ID'])setSubmissionId(rec['Submission_ID']);
+        console.log('[Resume] Found',completed.length,'completed sections for',info.site,'Week',info.week,info.auditor);
       }
-    }catch(e){console.warn('Resume check:',e);}
+    }catch(e){console.warn('[Resume] check failed:',e);}
     setResumeLoading(false);setStep('areas');
   };
 
@@ -1124,23 +1150,38 @@ function FillScorecard({onBack}){
   </div></div>`;
 
   // ── INFO FORM ─────────────────────────────────────────
-  return html`<div style=${{minHeight:'100vh',background:C.bg}}><div style=${{maxWidth:500,margin:'0 auto',padding:16}}>
+  return html`<div style=${{minHeight:'100vh',background:C.bg}}><div style=${{maxWidth:520,margin:'0 auto',padding:16}}>
     <div style=${{textAlign:'center',padding:'28px 0 34px'}}>
       <div style=${{color:C.accent,fontFamily:mono,fontSize:10,letterSpacing:3}}>AUDIT ENTRY</div>
       <h1 style=${{color:C.text,fontFamily:mono,fontSize:22,fontWeight:700,marginTop:6}}>FILL SCORECARD</h1>
       ${user?html`<div style=${{color:C.muted,fontSize:12,marginTop:6}}>Signed in as <b style=${{color:C.accent}}>${user.name}</b></div>`:''}
     </div>
-    ${[{label:'SITE NAME',key:'site',type:'select'},{label:'DATE',key:'date',type:'date'},{label:'WEEK NUMBER (AUTO)',key:'week',type:'number',ro:true},{label:'AUDITOR NAME',key:'auditor',type:'text',ph:'Enter full name'}].map(f=>html`
+
+    <div style=${{background:'rgba(233,223,67,.07)',border:'1px solid rgba(233,223,67,.2)',borderRadius:10,padding:'12px 16px',marginBottom:20,display:'flex',gap:10,alignItems:'flex-start'}}>
+      <span style=${{fontSize:18,flexShrink:0}}>ℹ</span>
+      <div style=${{fontSize:11,color:C.muted,lineHeight:1.6}}>
+        To <b style=${{color:'#E9DF43'}}>resume</b> a saved session, select the same <b style=${{color:'#fff'}}>Site</b>, enter a <b style=${{color:'#fff'}}>date within that week</b>, and use the same <b style=${{color:'#fff'}}>Auditor Name</b>.
+        Previously completed sections will be pre-filled and marked ✓.
+      </div>
+    </div>
+
+    ${[
+      {label:'SITE NAME',key:'site',type:'select'},
+      {label:'AUDIT DATE (any date within the week)',key:'date',type:'date'},
+      {label:'WEEK NUMBER (auto-calculated from date)',key:'week',type:'number',ro:true},
+      {label:'AUDITOR NAME',key:'auditor',type:'text',ph:'Enter full name — must match previous session to resume'}
+    ].map(f=>html`
       <div key=${f.key} style=${{marginBottom:18}}>
         <label style=${{color:C.muted,fontSize:10,fontFamily:mono,letterSpacing:1.5,display:'block',marginBottom:8}}>${f.label}</label>
         ${f.type==='select'
           ?html`<select value=${info[f.key]} onChange=${e=>setInfo(p=>({...p,[f.key]:e.target.value}))} style=${{width:'100%',background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14,cursor:'pointer'}}>${SITES.map(s=>html`<option key=${s}>${s}</option>`)}</select>`
-          :html`<input type=${f.type} readOnly=${!!f.ro} value=${info[f.key]} placeholder=${f.ph||''} onInput=${e=>{if(f.key==='date'){const d=new Date(e.target.value);setInfo(p=>({...p,date:e.target.value,week:isNaN(d.getTime())?p.week:weekNum(d)}));}else setInfo(p=>({...p,[f.key]:e.target.value}));}} style=${{width:'100%',background:f.ro?'#0a0d12':C.card,color:f.ro?C.muted:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14}}/>`}
+          :html`<input type=${f.type} readOnly=${!!f.ro} value=${info[f.key]} placeholder=${f.ph||''} onInput=${e=>{if(f.key==='date'){const d=new Date(e.target.value);setInfo(p=>({...p,date:e.target.value,week:isNaN(d.getTime())?p.week:weekNum(d)}));}else setInfo(p=>({...p,[f.key]:e.target.value}));}} style=${{width:'100%',background:f.ro?'rgba(0,0,0,.4)':C.card,color:f.ro?C.muted:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 14px',fontSize:14}}/>`}
       </div>`)}
-    ${resumeLoading?html`<div style=${{textAlign:'center',padding:'14px 0',color:C.muted,fontFamily:mono,fontSize:12}}><span class="spin">◎</span> Checking for existing record…</div>`:''}
+
+    ${resumeLoading?html`<div style=${{textAlign:'center',padding:'14px 0',color:C.muted,fontFamily:mono,fontSize:12,display:'flex',gap:10,justifyContent:'center',alignItems:'center'}}><span class="spin">◎</span> Checking for existing record…</div>`:''}
     <button onClick=${startAudit} disabled=${resumeLoading}
       style=${{width:'100%',background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'16px 0',fontSize:15,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:8,letterSpacing:1}}>
-      START AUDIT →
+      START / RESUME AUDIT →
     </button>
     <button onClick=${onBack} style=${{width:'100%',background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 0',fontFamily:mono,fontSize:13,cursor:'pointer',marginTop:10}}>← BACK TO HOME</button>
   </div></div>`;
@@ -1180,7 +1221,7 @@ function generateEmailReport(records,activeWeeks,displayWeek,downloadOnly=false)
         if(a?.answer==='FAIL'){
           const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));
           const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));
-          fails.push({neg:toNeg(q),remark:a.remark||'',imgs,vids});
+          fails.push({q,remark:a.remark||'',imgs,vids});
         }
       });
       return{area,aScore,fails};
@@ -1289,7 +1330,7 @@ ${!hasFails?'<p style="color:#16a34a;font-size:11px;font-weight:600;padding:8px 
 ${dc.areas.filter(a=>a.fails.length>0).map(a=>`<div class="area-row">
 <div class="area-name" style="color:${ACLR[a.area]}">${a.area}</div>
 ${a.fails.map(f=>`<div class="fail-item"><div style="flex:1">
-<div class="fail-sentence">✗ ${f.neg}${f.remark?` <span class="remark-inline">(Remark: ${f.remark})</span>`:''}</div>
+<div class="fail-sentence">⚠ ${f.q}${f.remark?` <span class="remark-inline">(Remark: ${f.remark})</span>`:''}</div>
 ${(f.imgs.length>0||f.vids.length>0)?`<div class="media-row">
 ${f.imgs.map(u=>`<img class="media-img" src="${u}" loading="lazy" alt="evidence"/>`).join('')}
 ${f.vids.map((u,vi)=>{const resolved=u.includes('drive.google.com')?u.replace('/view','/preview').replace('/open','/preview'):(u.startsWith('http')?u:'');return resolved?`<a class="media-vid" href="${resolved}" target="_blank" title="Open video">🎥<span style="font-size:9px">VIDEO ${vi+1}</span></a>`:'';}).join('')}
@@ -1346,18 +1387,37 @@ function dcAveragesForWeek(records, week){
 function OverviewTab({records,week}){
   const[view,setView]=useState('list');const[lb,setLb]=useState(null);
   const activeWeeks=useMemo(()=>[...new Set(records.map(r=>Number(r['Week_No'])).filter(Boolean))].sort((a,b)=>a-b),[records]);
-  // Step 1: per-DC averages → Step 2: network avg of DC avgs
+
+  // All records used for KPI calculations (complete + partial both shown)
   const dcAvgs=useMemo(()=>dcAveragesForWeek(records,week),[records,week]);
   const netAvg=dcAvgs.length?Math.round(dcAvgs.reduce((s,x)=>s+x.score,0)/dcAvgs.length):0;
   const top3=[...dcAvgs].slice(0,3);
   const bot3=[...dcAvgs].sort((a,b)=>a.score-b.score).slice(0,3);
   const areaAvgs=useMemo(()=>AREAS.map(area=>({area,short:ASHORT[area],color:ACLR[area],
     avg:dcAvgs.length?Math.round(dcAvgs.reduce((s,x)=>s+(x.areaScores[area]||0),0)/dcAvgs.length):0})),[dcAvgs]);
+
+  // Partial entries for selected week — visibility card only, not used in any calculations
+  const weekPartials=useMemo(()=>
+    records.filter(r=>Number(r['Week_No'])===week&&String(r['Status']||'').trim()==='Partial')
+    .map(r=>({
+      site:String(r['Site']||'—'),
+      auditor:String(r['Auditor']||'—'),
+      date:String(r['Audit_Date']||'—'),
+      iosOk:r['IOS_Status']===true||String(r['IOS_Status']).toLowerCase()==='true',
+      bbbOk:r['BBB_Status']===true||String(r['BBB_Status']).toLowerCase()==='true',
+      psaOk:r['PSA_Status']===true||String(r['PSA_Status']).toLowerCase()==='true',
+      ssaOk:r['SSA_Status']===true||String(r['SSA_Status']).toLowerCase()==='true',
+      excOk:r['EXC_Status']===true||String(r['EXC_Status']).toLowerCase()==='true',
+      volOk:r['VOL_Status']===true||String(r['VOL_Status']).toLowerCase()==='true',
+    }))
+  ,[records,week]);
+
+  const areaStatusKeys=[['IOS','iosOk'],['BBB','bbbOk'],['PSA','psaOk'],['SSA','ssaOk'],['EXC','excOk'],['VOL','volOk']];
   const donutAreas=areaAvgs.filter(a=>a.avg>0);
   const donutData={labels:donutAreas.map(a=>a.short),datasets:[{data:donutAreas.map(a=>a.avg),backgroundColor:donutAreas.map(a=>a.color+'cc'),borderColor:donutAreas.map(a=>a.color),borderWidth:2,hoverOffset:8}]};
   const donutOpts={responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${donutAreas[ctx.dataIndex]?.area}: ${donutAreas[ctx.dataIndex]?.avg}%`}},datalabels:{color:'#fff',font:{size:9,weight:'bold',family:mono},formatter:(_,ctx)=>`${donutAreas[ctx.dataIndex]?.short}\n${donutAreas[ctx.dataIndex]?.avg}%`,textAlign:'center',anchor:'center',align:'center',padding:2}}};
   const barData={labels:dcAvgs.map(s=>s.site.length>11?s.site.slice(0,11)+'…':s.site),datasets:[{label:'Score %',data:dcAvgs.map(s=>s.score),backgroundColor:dcAvgs.map(s=>scCol(s.score)+'aa'),borderColor:dcAvgs.map(s=>scCol(s.score)),borderWidth:1,borderRadius:4}]};
-  const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#e6edf3',font:{size:9,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:2}},scales:{x:{ticks:{color:C.muted,font:{size:9},maxRotation:55},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
+  const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#fff',font:{size:9,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:2}},scales:{x:{ticks:{color:C.muted,font:{size:9},maxRotation:55},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
   const rankCls=i=>i===0?'rank rank-1':i===1?'rank rank-2':'rank rank-3';
   if(!dcAvgs.length)return html`<div>
     <div style=${{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:16,flexWrap:'wrap'}}>
@@ -1424,6 +1484,32 @@ function OverviewTab({records,week}){
         </div>`)}</div>`
         :html`<div style=${{height:Math.max(260,dcAvgs.length*18)+'px'}}><${ChartComp} type="bar" data=${barData} options=${barOpts} style=${{width:'100%',height:'100%'}}/></div>`}
     </div>
+
+    ${weekPartials.length>0?html`<div style=${{background:'rgba(233,223,67,.07)',border:'1px solid rgba(233,223,67,.25)',borderRadius:10,padding:18,marginTop:20}}>
+      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+        <span style=${{fontSize:18}}>⏳</span>
+        <div>
+          <div style=${{color:'#E9DF43',fontFamily:mono,fontSize:11,fontWeight:700,letterSpacing:1.2}}>PARTIALLY FILLED SCORECARDS — ${fmtW(week)}</div>
+          <div style=${{color:C.muted,fontSize:10,marginTop:2}}>Visibility only · Not included in any calculations or rankings</div>
+        </div>
+        <span style=${{marginLeft:'auto',background:'rgba(233,223,67,.2)',color:'#E9DF43',borderRadius:6,padding:'3px 10px',fontFamily:mono,fontSize:11,fontWeight:700}}>${weekPartials.length} DC${weekPartials.length!==1?'s':''}</span>
+      </div>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:10}}>
+        ${weekPartials.map((p,i)=>html`<div key=${i} style=${{background:'rgba(0,0,0,.25)',borderRadius:8,padding:'12px 14px',border:'1px solid rgba(233,223,67,.15)'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+            <div>
+              <div style=${{color:'#fff',fontFamily:mono,fontSize:12,fontWeight:700}}>${p.site}</div>
+              <div style=${{color:C.muted,fontSize:10,marginTop:2}}>${p.auditor} · ${p.date}</div>
+            </div>
+          </div>
+          <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>
+            ${areaStatusKeys.map(([lbl,key])=>html`<span key=${lbl} style=${{background:p[key]?'rgba(74,222,128,.15)':'rgba(248,113,113,.1)',color:p[key]?'#4ade80':'#f87171',border:`1px solid ${p[key]?'rgba(74,222,128,.3)':'rgba(248,113,113,.25)'}`,borderRadius:4,padding:'2px 8px',fontFamily:mono,fontSize:9,fontWeight:700}}>
+              ${p[key]?'✓':'⊙'} ${lbl}
+            </span>`)}
+          </div>
+        </div>`)}
+      </div>
+    </div>`:''}
   </div>`;
 }
 
@@ -1451,7 +1537,7 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
   const improvementRows=fails.length===0
     ?'<tr><td colspan="3" style="text-align:center;color:#16a34a;padding:18px">✓ No failures — excellent performance!</td></tr>'
     :fails.map(f=>`<tr>
-        <td style="color:#991b1b;font-weight:600">${f.neg}</td>
+        <td style="color:#991b1b;font-weight:600">${f.q||f.neg||'—'}</td>
         <td style="color:#64748b;font-size:10px">${f.area}</td>
         <td style="color:#92400e;font-style:italic">${f.remark||'—'}</td>
       </tr>`).join('');
@@ -1603,10 +1689,10 @@ function DCDetailTab({records,week,site,setSite}){
   const areaScores=useMemo(()=>AREAS.map(a=>({area:a,score:Number(rec?.[ACOL[a]])||0,color:ACLR[a],short:ASHORT[a]})),[rec]);
   const score=Number(rec?.['Overall_Score_%'])||0;const auditor=String(rec?.['Auditor']||'—');const date=String(rec?.['Audit_Date']||'—');
   const passC=Number(rec?.['Pass_Count'])||0;const failC=Number(rec?.['Fail_Count'])||0;const naC=Number(rec?.['NA_Count'])||0;
-  const fails=useMemo(()=>{const out=[];AREAS.forEach(area=>{Object.entries(answers[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL'){const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));out.push({area,q,neg:toNeg(q),remark:a.remark||'',imgs,vids});}});});return out;},[answers]);
+  const fails=useMemo(()=>{const out=[];AREAS.forEach(area=>{Object.entries(answers[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL'){const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));out.push({area,q,remark:a.remark||'',imgs,vids});}});});return out;},[answers]);
   const allMedia=useMemo(()=>{const items=[];AREAS.forEach(area=>{Object.entries(answers[area]||{}).forEach(([q,a])=>{(a?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))items.push({type:'image',src:u,area,q});});(a?.videoURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('blob:')))items.push({type:'video',url:u,area,q});});});});return items;},[answers]);
   const barData={labels:areaScores.map(a=>a.short),datasets:[{label:'Score %',data:areaScores.map(a=>a.score),backgroundColor:areaScores.map(a=>a.color+'bb'),borderColor:areaScores.map(a=>a.color),borderWidth:1,borderRadius:4}]};
-  const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#e6edf3',font:{size:11,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:3}},scales:{x:{ticks:{color:C.muted,font:{size:10}},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
+  const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#fff',font:{size:11,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:3}},scales:{x:{ticks:{color:C.muted,font:{size:10}},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
   return html`<div class="fi">
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
     <div style=${{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap',alignItems:'flex-end'}}>
@@ -1623,7 +1709,7 @@ function DCDetailTab({records,week,site,setSite}){
       </div>`:''}
       ${siteWeekRecs.length>1?html`<div style=${{background:C.accent+'12',border:`1px solid ${C.accent}33`,borderRadius:8,padding:'8px 14px',fontFamily:mono,fontSize:10,color:C.accent}}>${siteWeekRecs.length} entries for ${fmtW(week)}</div>`:''}
     </div>
-    ${rec?html`<div style=${{background:'linear-gradient(135deg,#161b22 0%,#1a2234 100%)',border:`1px solid ${scCol(score)}33`,borderRadius:14,padding:'22px 26px',marginBottom:20,position:'relative',overflow:'hidden'}}>
+    ${rec?html`<div style=${{background:'rgba(0,0,0,.35)',border:`1px solid ${scCol(score)}44`,borderRadius:14,padding:'22px 26px',marginBottom:20,position:'relative',overflow:'hidden'}}>
       <div style=${{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${scCol(score)},${scCol(score)}88)`}}/>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:16}}>
         <div>
@@ -1674,7 +1760,7 @@ function DCDetailTab({records,week,site,setSite}){
               <div style=${{flex:1,minWidth:180}}>
                 <div style=${{display:'flex',gap:8,alignItems:'flex-start',marginBottom:f.remark?6:0}}>
                   <span style=${{color:C.fail,fontSize:16,lineHeight:1.3,flexShrink:0,marginTop:1}}>✗</span>
-                  <div><div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.neg}</div><div style=${{color:C.muted,fontSize:9,marginTop:2,fontFamily:mono,letterSpacing:.4}}>${f.area}</div></div>
+                  <div><div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.q}</div><div style=${{color:C.muted,fontSize:9,marginTop:2,fontFamily:mono,letterSpacing:.4}}>${f.area}</div></div>
                 </div>
                 ${f.remark?html`<div style=${{marginLeft:24,marginTop:4,paddingLeft:10,borderLeft:`2px solid #fbbf2466`,color:'#fbbf24',fontSize:11,lineHeight:1.5,fontStyle:'italic'}}><span style=${{color:C.muted,fontSize:9,fontFamily:mono,fontStyle:'normal',display:'block',marginBottom:1,letterSpacing:.4}}>REMARK</span>${f.remark}</div>`:''}
               </div>
@@ -1752,7 +1838,7 @@ function WeeklyPerfTab({records,site,setSite,activeWeeks}){
   })}));
   const downloadReport=()=>{
     const allRecs=records.filter(r=>String(r['Site'])===site).sort((a,b)=>Number(a['Week_No'])-Number(b['Week_No']));
-    const fails={};allRecs.forEach(rec=>{const ans=parseAns(rec);AREAS.forEach(a=>{Object.entries(ans[a]||{}).forEach(([q,av])=>{if(av?.answer==='FAIL'){if(!fails[q])fails[q]={q,neg:toNeg(q),count:0,area:a};fails[q].count++;}});});});
+    const fails={};allRecs.forEach(rec=>{const ans=parseAns(rec);AREAS.forEach(a=>{Object.entries(ans[a]||{}).forEach(([q,av])=>{if(av?.answer==='FAIL'){if(!fails[q])fails[q]={q,count:0,area:a};fails[q].count++;}});});});
     const topFails=Object.values(fails).sort((a,b)=>b.count-a.count).slice(0,12);
     const allImgs=[];allRecs.forEach(rec=>{const ans=parseAns(rec);AREAS.forEach(a=>{Object.values(ans[a]||{}).forEach(v=>{(v?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))allImgs.push({url:u,wk:rec['Week_No'],area:a});});});});});
     const colBg=v=>v>=80?'#d1fae5':v>=60?'#fef3c7':'#fee2e2';const colFg=v=>v>=80?'#065f46':v>=60?'#92400e':'#991b1b';
@@ -1761,14 +1847,14 @@ function WeeklyPerfTab({records,site,setSite,activeWeeks}){
     body+=`<h2>WEEK-BY-WEEK PERFORMANCE</h2><table><tr><th class="left">WEEK</th><th>OVERALL %</th>${AREAS.map(a=>`<th>${ASHORT[a]}</th>`).join('')}<th>PASS</th><th>FAIL</th><th>NA</th></tr>`;
     allRecs.forEach(rec=>{const sv=Number(rec['Overall_Score_%'])||0;const cls=sv>=80?'g':sv>=60?'a':'r';body+=`<tr><td class="left" style="font-weight:600">${fmtW(Number(rec['Week_No']))}</td><td class="${cls}">${sv}%</td>${AREAS.map(a=>{const v=Number(rec[ACOL[a]])||0;const c=v>=80?'g':v>=60?'a':'r';return`<td class="${c}">${v}%</td>`;}).join('')}<td>${rec['Pass_Count']||0}</td><td>${rec['Fail_Count']||0}</td><td>${rec['NA_Count']||0}</td></tr>`;});
     body+=`</table><h2>TOP REPEATED FAILURES (${topFails.length})</h2><table><tr><th>COUNT</th><th class="left">ISSUE</th><th class="left">AREA</th></tr>`;
-    topFails.forEach(f=>{body+=`<tr><td style="background:#fee2e2;color:#991b1b;font-weight:700">${f.count}x</td><td class="left">${f.neg}</td><td class="left" style="color:#64748b;font-size:10px">${f.area}</td></tr>`;});
+    topFails.forEach(f=>{body+=`<tr><td style="background:#fee2e2;color:#991b1b;font-weight:700">${f.count}x</td><td class="left">${f.q}</td><td class="left" style="color:#64748b;font-size:10px">${f.area}</td></tr>`;});
     body+=`</table>`;
     if(allImgs.length>0){body+=`<h2>EVIDENCE IMAGES (${allImgs.length})</h2><div class="img-grid">${allImgs.map(i=>`<img src="${i.url}" loading="lazy"/>`).join('')}</div>`;}
     body+=`<footer>Weekly Audit Scorecard · ${site} · ${new Date().getFullYear()}</footer></div></body></html>`;
     w.document.write(body);w.document.close();setTimeout(()=>w.print(),800);
   };
   const latestDcRec=useMemo(()=>{const dcRecs=records.filter(r=>String(r['Site'])===site).sort((a,b)=>Number(b['Week_No'])-Number(a['Week_No']));return dcRecs[0]||null;},[records,site]);
-  const latestFails=useMemo(()=>{if(!latestDcRec)return[];const ans=parseAns(latestDcRec);const out=[];AREAS.forEach(area=>{Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL'){const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));out.push({area,q,neg:toNeg(q),remark:a.remark||'',imgs,vids});}});});return out;},[latestDcRec]);
+  const latestFails=useMemo(()=>{if(!latestDcRec)return[];const ans=parseAns(latestDcRec);const out=[];AREAS.forEach(area=>{Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL'){const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));out.push({area,q,remark:a.remark||'',imgs,vids});}});});return out;},[latestDcRec]);
   return html`<div class="fi">
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
     <div class="card" style=${{padding:18,marginBottom:20}}>
@@ -1806,7 +1892,7 @@ function WeeklyPerfTab({records,site,setSite,activeWeeks}){
           <div style=${{flex:1,minWidth:200}}>
             <div style=${{display:'flex',gap:8,alignItems:'flex-start',marginBottom:f.remark?6:0}}>
               <span style=${{color:C.fail,fontSize:15,flexShrink:0,marginTop:1}}>✗</span>
-              <div><div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.neg}</div><div style=${{color:ACLR[f.area]||C.muted,fontSize:9,fontFamily:mono,letterSpacing:.4,marginTop:2}}>${f.area}</div></div>
+              <div><div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${f.q}</div><div style=${{color:ACLR[f.area]||C.muted,fontSize:9,fontFamily:mono,letterSpacing:.4,marginTop:2}}>${f.area}</div></div>
             </div>
             ${f.remark?html`<div style=${{marginLeft:24,marginTop:4,paddingLeft:10,borderLeft:'2px solid #fbbf2466',color:'#fbbf24',fontSize:11,fontStyle:'italic'}}><span style=${{color:C.muted,fontSize:9,fontFamily:mono,fontStyle:'normal',display:'block',marginBottom:1}}>REMARK</span>${f.remark}</div>`:''}
           </div>
@@ -1833,7 +1919,7 @@ function DCFacilityTab({records,week}){
     const avgScore=Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
     const areaScores={};AREAS.forEach(area=>{const vals=siteRecs.map(r=>Number(r[ACOL[area]])||0);areaScores[area]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);});
     const latest=siteRecs[siteRecs.length-1];const ans=parseAns(latest);
-    const fails=[];AREAS.forEach(area=>Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL')fails.push({area,neg:toNeg(q),remark:a.remark||''});}));
+    const fails=[];AREAS.forEach(area=>Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL')fails.push({area,q,remark:a.remark||''});}));
     const imgs=[];AREAS.forEach(area=>Object.values(ans[area]||{}).forEach(a=>{(a?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))imgs.push({type:'image',src:u});});}));
     return{site,score:avgScore,auditor:String(latest['Auditor']||'—'),date:String(latest['Audit_Date']||'—'),hasData:true,areaScores,fails,imgs,entryCount:siteRecs.length};
   }),[records,sites,week]);
@@ -1842,7 +1928,7 @@ function DCFacilityTab({records,week}){
   const areaAvgs=AREAS.map(area=>({area,color:ACLR[area],short:ASHORT[area],avg:audited.length?Math.round(audited.reduce((s,x)=>s+(x.areaScores[area]||0),0)/audited.length):0}));
   const commonFails=useMemo(()=>{const f={};audited.forEach(s=>s.fails.forEach(fi=>{if(!f[fi.neg])f[fi.neg]={neg:fi.neg,count:0};f[fi.neg].count++;}));return Object.values(f).sort((a,b)=>b.count-a.count).slice(0,8);},[audited]);
   const barData={labels:audited.map(s=>s.site.length>11?s.site.slice(0,11)+'…':s.site),datasets:[{label:'Score %',data:audited.map(s=>s.score),backgroundColor:audited.map(s=>scCol(s.score)+'99'),borderColor:audited.map(s=>scCol(s.score)),borderWidth:1,borderRadius:4}]};
-  const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#e6edf3',font:{size:9,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:2}},scales:{x:{ticks:{color:C.muted,font:{size:9},maxRotation:45},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
+  const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#fff',font:{size:9,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:2}},scales:{x:{ticks:{color:C.muted,font:{size:9},maxRotation:45},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
   const sizeColor={Large:C.accent,Medium:C.blue,Small:C.purple};
   return html`<div class="fi">
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
@@ -1932,15 +2018,15 @@ function Dashboard({onBack}){
   const syncStr=lastSync?lastSync.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'—';
 
   return html`<div style=${{minHeight:'100vh',background:C.bg}}>
-    <div style=${{background:'linear-gradient(180deg,#1a2030 0%,#161b22 100%)',borderBottom:`1px solid ${C.border}`,padding:'0 20px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 20px rgba(0,0,0,.4)'}}>
+    <div style=${{background:'linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.4) 100%)',borderBottom:'1px solid rgba(255,255,255,.12)',padding:'0 20px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 20px rgba(0,0,0,.4)'}}>
       <div style=${{padding:'12px 0'}}>
-        <div style=${{color:C.accent,fontFamily:mono,fontSize:8,letterSpacing:3,marginBottom:2}}>LOGISTICS OPERATIONS MANAGEMENT</div>
+        <div style=${{color:'rgba(255,255,255,.6)',fontFamily:mono,fontSize:8,letterSpacing:3,marginBottom:2}}>LOGISTICS OPERATIONS MANAGEMENT</div>
         <div style=${{color:C.text,fontFamily:mono,fontSize:18,fontWeight:700,letterSpacing:.5}}>WEEKLY AUDIT <span style=${{color:C.accent}}>SCORECARD</span></div>
       </div>
       <div style=${{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'8px 0'}}>
         <div>
           <div style=${{color:C.muted,fontSize:8,fontFamily:mono,letterSpacing:1.2,marginBottom:3,textAlign:'center'}}>WEEK</div>
-          <select value=${displayWeek} onChange=${e=>setSelWeek(Number(e.target.value))} style=${{background:'#0d1117',color:C.accent,border:`2px solid ${C.accent}55`,borderRadius:8,padding:'7px 14px',fontSize:20,fontFamily:mono,fontWeight:700,cursor:'pointer',minWidth:90}}>
+          <select value=${displayWeek} onChange=${e=>setSelWeek(Number(e.target.value))} style=${{background:'rgba(0,0,0,.45)',color:'#E9DF43',border:'2px solid rgba(233,223,67,.45)',borderRadius:8,padding:'7px 14px',fontSize:20,fontFamily:mono,fontWeight:700,cursor:'pointer',minWidth:90}}>
             ${activeWeeks.length>0?activeWeeks.map(w=>html`<option key=${w} value=${w}>${fmtW(w)}</option>`):html`<option value=${1}>${fmtW(1)}</option>`}
           </select>
         </div>
@@ -1954,9 +2040,9 @@ function Dashboard({onBack}){
       </div>
     </div>
     <div class="tab-bar">${TABS.map((t,i)=>html`<button key=${t} class=${'tab-btn'+(tab===i?' act':'')} onClick=${()=>setTab(i)}>${ICONS[i]} ${t}</button>`)}</div>
-    ${!sheetOK()?html`<div style=${{background:'#1a1200',borderBottom:`1px solid #f59e0b22`,padding:'7px 24px',fontFamily:mono,fontSize:11,color:'#d97706'}}>⚠ SHEET_URL not configured. Set the Apps Script URL in the CONFIG section.</div>`:''}
+    ${!sheetOK()?html`<div style=${{background:'rgba(0,0,0,.3)',borderBottom:'1px solid rgba(233,223,67,.2)',padding:'7px 24px',fontFamily:mono,fontSize:11,color:'#E9DF43'}}>⚠ SHEET_URL not configured. Set the Apps Script URL in the CONFIG section.</div>`:''}
     ${loading?html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:14,padding:72,color:C.muted,fontFamily:mono,fontSize:13}}><span class="spin" style=${{fontSize:22,color:C.accent}}>◎</span> Fetching from Google Sheets…</div>`:''}
-    ${!loading&&error?html`<div style=${{margin:'24px',background:C.card,border:`1px solid ${C.fail}33`,borderRadius:12,padding:'40px 24px',textAlign:'center'}}>
+    ${!loading&&error?html`<div style=${{margin:'24px',background:'rgba(0,0,0,.35)',border:`1px solid ${C.fail}44`,borderRadius:12,padding:'40px 24px',textAlign:'center'}}>
       <div style=${{fontSize:36,marginBottom:12,opacity:.3}}>⚠</div>
       <div style=${{color:C.fail,fontFamily:mono,fontSize:13,fontWeight:700,marginBottom:10,letterSpacing:1}}>FETCH ERROR</div>
       <div style=${{color:C.muted,fontSize:12,marginBottom:16,maxWidth:500,margin:'0 auto 16px',whiteSpace:'pre-line',lineHeight:1.7}}>${error}</div>
