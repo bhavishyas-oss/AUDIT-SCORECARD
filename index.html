@@ -129,6 +129,16 @@ const scLabel=v=>v>=80?'GOOD':v>=60?'MONITOR':'ACTION';
 function weekNum(d){const u=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=u.getUTCDay()||7;u.setUTCDate(u.getUTCDate()+4-day);const y=new Date(Date.UTC(u.getUTCFullYear(),0,1));return Math.ceil((((u-y)/864e5)+1)/7);}
 function toNeg(q){const c=q.replace(/\?.*$/,'').trim().toUpperCase();if(c.startsWith('IS '))return'NO '+c.slice(3);if(c.startsWith('ARE '))return'NOT '+c.slice(4);if(c.startsWith('HAS '))return'HAS NOT '+c.slice(4);if(c.startsWith('HAVE '))return'HAVE NOT '+c.slice(5);if(c.startsWith('DOES '))return'DOES NOT '+c.slice(5);return'ISSUE: '+c;}
 function parseAns(rec){try{const v=rec['Answers_JSON'];return typeof v==='string'?JSON.parse(v||'{}'):(v||{});}catch{return{};}}
+
+// Convert any Google Drive URL to the most reliable display format for <img> tags
+function driveImgSrc(url){
+  if(!url||typeof url!=='string')return url;
+  if(!url.includes('drive.google.com'))return url;
+  // Extract file ID from various Drive URL formats
+  const idMatch=url.match(/[?&]id=([a-zA-Z0-9_-]+)/)||url.match(/\/d\/([a-zA-Z0-9_-]+)/)||url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if(idMatch)return 'https://drive.google.com/uc?id='+idMatch[1]+'&export=view';
+  return url;
+}
 function fmtW(w){return'W'+String(w).padStart(2,'0');}
 const pct=(n,d)=>d===0?0:Math.round(n/d*100);
 
@@ -624,7 +634,7 @@ function Lightbox({items,idx:start=0,onClose}){
       ${/* ── Media area ── */null}
       <div style=${{width:'100%',background:'#050709',borderRadius:12,display:'flex',justifyContent:'center',alignItems:'center',minHeight:260,maxHeight:'70vh',overflow:'hidden',border:`1px solid ${C.border}`}}>
         ${isImg
-          ?html`<img src=${it.src||it.url}
+          ?html`<img src=${driveImgSrc(it.src||it.url||'')}
               style=${{maxWidth:'100%',maxHeight:'70vh',objectFit:'contain',transform:`scale(${zoom})`,transition:'transform .2s',cursor:zoom>1?'grab':'default'}}
               onError=${e=>{e.target.style.display='none';e.target.parentElement.innerHTML='<div style="color:#6b7280;fontFamily:monospace;padding:40px;fontSize:11px">Image unavailable</div>';}}
             />`
@@ -921,14 +931,51 @@ function FillScorecard({onBack}){
   const getA=(ar,q)=>ans[ar]?.[q]||{answer:null,remark:'',images:[],videos:[]};
 
   // ── Safe back: warn if any section has been started but not submitted ──
+  // Handles BOTH explicit UI back buttons AND the browser's native back button.
+  const hasUnsavedWork=()=>
+    step!=='info'&&step!=='done'&&(doneAr.length>0||Object.keys(ans).length>0);
+
   const safeBack=()=>{
-    // No warning needed if: still on info screen, or already submitted, or nothing filled yet
-    const hasWork=step!=='info'&&step!=='done'&&(doneAr.length>0||Object.keys(ans).length>0);
-    if(hasWork){
+    if(hasUnsavedWork()){
       if(!window.confirm('Data will not be saved. Do you really want to exit?'))return;
     }
     onBack();
   };
+
+  // ── Intercept browser native back button ──
+  useEffect(()=>{
+    // Push a sentinel history entry so the native back button fires 'popstate'
+    // instead of leaving the page. This entry is replaced/cleaned on unmount.
+    window.history.pushState({sfxAudit:true},'');
+
+    const onPopState=(e)=>{
+      // User pressed browser back button
+      if(hasUnsavedWork()){
+        // Re-push so the browser URL doesn't actually change
+        window.history.pushState({sfxAudit:true},'');
+        if(!window.confirm('Data will not be saved. Do you really want to exit?'))return;
+      }
+      // User confirmed exit OR no unsaved work
+      onBack();
+    };
+
+    const onBeforeUnload=(e)=>{
+      // Fires when user closes tab / refreshes / navigates to external URL
+      if(hasUnsavedWork()){
+        e.preventDefault();
+        e.returnValue=''; // Required for Chrome to show the dialog
+        return '';
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return ()=>{
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[step,doneAr.length,Object.keys(ans).length]);
 
   const startCam=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},80);}catch{alert('Camera unavailable.');}};
   const capPhoto=(ar,q)=>{const el=cRef.current,vd=vRef.current;if(!el||!vd)return;el.width=vd.videoWidth||640;el.height=vd.videoHeight||480;el.getContext('2d').drawImage(vd,0,0);const img=el.toDataURL();if(stream)stream.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);setAnn({src:img,ar,q});};
@@ -1815,7 +1862,7 @@ function DCDetailTab({records,week,site,setSite}){
                 ${f.remark?html`<div style=${{marginLeft:24,marginTop:4,paddingLeft:10,borderLeft:`2px solid #fbbf2466`,color:'#fbbf24',fontSize:11,lineHeight:1.5,fontStyle:'italic'}}><span style=${{color:C.muted,fontSize:9,fontFamily:mono,fontStyle:'normal',display:'block',marginBottom:1,letterSpacing:.4}}>REMARK</span>${f.remark}</div>`:''}
               </div>
               ${(f.imgs.length>0||f.vids.length>0)?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',flexShrink:0,alignItems:'flex-start'}}>
-                ${f.imgs.map((u,j)=>html`<img key=${j} src=${u} onClick=${()=>setLb({items:[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))],idx:j})} style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.fail}44`,transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.fail;e.currentTarget.style.transform='scale(1.05)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.fail+'44';e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/>`)}
+                ${f.imgs.map((u,j)=>html`<img key=${j} src=${driveImgSrc(u)} onClick=${()=>setLb({items:[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))],idx:j})} style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.fail}44`,transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.fail;e.currentTarget.style.transform='scale(1.05)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.fail+'44';e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/>`)}
                 ${f.vids.map((u,j)=>html`<div key=${j} onClick=${()=>setLb({items:[...f.imgs.map(s=>({type:'image',src:s})),...f.vids.map(s=>({type:'video',url:s}))],idx:f.imgs.length+j})} style=${{width:72,height:72,background:'#0a2030',border:`2px solid #06b6d444`,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:22,transition:'border-color .15s'}} onMouseEnter=${e=>e.currentTarget.style.borderColor='#06b6d4'} onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d444'}>🎥<span style=${{color:C.cyan,fontSize:8,fontFamily:mono,marginTop:2}}>PLAY</span></div>`)}
               </div>`:''}
             </div>
@@ -1829,7 +1876,7 @@ function DCDetailTab({records,week,site,setSite}){
               <div style=${{color:ACLR[area],fontFamily:mono,fontSize:10,fontWeight:700,marginBottom:10,padding:'5px 12px',background:ACLR[area]+'10',borderLeft:`3px solid ${ACLR[area]}`,borderRadius:'0 5px 5px 0',letterSpacing:.8}}>${area}</div>
               <div style=${{display:'flex',flexWrap:'wrap',gap:8}}>
                 ${aMedia.map((m,j)=>m.type==='image'
-                  ?html`<div key=${j} style=${{position:'relative',cursor:'pointer'}} onClick=${()=>setLb({items:allMedia,idx:allMedia.indexOf(m)})}><img src=${m.src} style=${{width:84,height:84,objectFit:'cover',borderRadius:6,border:`2px solid ${C.border}`,display:'block',transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=ACLR[area];e.currentTarget.style.transform='scale(1.05)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/></div>`
+                  ?html`<div key=${j} style=${{position:'relative',cursor:'pointer'}} onClick=${()=>setLb({items:allMedia,idx:allMedia.indexOf(m)})}><img src=${driveImgSrc(m.src)} style=${{width:84,height:84,objectFit:'cover',borderRadius:6,border:`2px solid ${C.border}`,display:'block',transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=ACLR[area];e.currentTarget.style.transform='scale(1.05)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/></div>`
                   :html`<div key=${j} style=${{width:84,height:84,background:'#0a2030',border:`2px solid #06b6d444`,borderRadius:6,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontSize:28,cursor:'pointer',gap:3,transition:'border-color .15s'}} onClick=${()=>setLb({items:allMedia,idx:allMedia.indexOf(m)})} onMouseEnter=${e=>e.currentTarget.style.borderColor='#06b6d4'} onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d444'}>🎥<span style=${{color:C.cyan,fontSize:8,fontFamily:mono}}>PLAY</span></div>`)}
               </div>
             </div>`;})}`}
@@ -1856,12 +1903,23 @@ function DCDetailTab({records,week,site,setSite}){
                     ${a.remark?html`<div style=${{marginLeft:62,color:'#fbbf24',fontSize:11,fontStyle:'italic',lineHeight:1.5,paddingLeft:8,borderLeft:'2px solid #fbbf2433'}}>↳ ${a.remark}</div>`:''}
                   </div>
                   ${hasMedia?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',flexShrink:0,alignItems:'flex-start',marginTop:2}}>
-                    ${qImgs.map((u,j)=>html`<img key=${j} src=${u}
-                      onClick=${()=>setLb({items:mediaItems,idx:j})}
-                      style=${{width:64,height:64,objectFit:'cover',borderRadius:5,cursor:'pointer',border:`2px solid ${ac}55`,transition:'all .15s'}}
-                      onMouseEnter=${e=>{e.currentTarget.style.transform='scale(1.08)';e.currentTarget.style.borderColor=ac;}}
-                      onMouseLeave=${e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.borderColor=ac+'55';}}
-                      onError=${e=>e.currentTarget.style.display='none'}/>`)}
+                    ${qImgs.map((u,j)=>{
+                      // Convert Drive thumbnail to uc?export=view for better compatibility
+                      const driveId=u.match(/[?&]id=([^&]+)/)?.[1]||u.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1];
+                      const imgSrc=driveId?`https://drive.google.com/uc?id=${driveId}&export=view`:u;
+                      return html`<img key=${j} src=${imgSrc}
+                        onClick=${()=>setLb({items:mediaItems,idx:j})}
+                        style=${{width:72,height:72,objectFit:'cover',borderRadius:5,cursor:'pointer',border:`2px solid ${ac}55`,transition:'all .15s',display:'block'}}
+                        onMouseEnter=${e=>{e.currentTarget.style.transform='scale(1.08)';e.currentTarget.style.borderColor=ac;}}
+                        onMouseLeave=${e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.borderColor=ac+'55';}}
+                        onError=${e=>{
+                          // Fallback: show a clickable link when img fails to load
+                          const d=e.currentTarget;const link=document.createElement('a');
+                          link.href=u;link.target='_blank';link.rel='noopener';
+                          link.style.cssText='display:flex;align-items:center;justify-content:center;flex-direction:column;width:72px;height:72px;background:#0a2030;border:2px solid #06b6d444;border-radius:5px;color:#60a5fa;font-size:9px;font-family:monospace;text-decoration:none;gap:3px;cursor:pointer';
+                          link.innerHTML='🖼<span>VIEW<br>IMAGE</span>';
+                          d.parentNode.replaceChild(link,d);
+                        }}/>`;})}
                     ${qVids.map((u,j)=>html`<div key=${j}
                       onClick=${()=>setLb({items:mediaItems,idx:qImgs.length+j})}
                       style=${{width:64,height:64,background:'#0a2030',border:`2px solid #06b6d455`,borderRadius:5,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:20,gap:2,transition:'border-color .15s'}}
