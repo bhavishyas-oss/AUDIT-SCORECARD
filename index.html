@@ -135,9 +135,12 @@ function driveImgSrc(url){
   if(!url||typeof url!=='string')return url;
   if(!url.includes('drive.google.com'))return url;
   // Extract file ID from various Drive URL formats
-  const idMatch=url.match(/[?&]id=([a-zA-Z0-9_-]+)/)||url.match(/\/d\/([a-zA-Z0-9_-]+)/)||url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if(idMatch)return 'https://drive.google.com/uc?id='+idMatch[1]+'&export=view';
-  return url;
+  const idMatch=url.match(/[?&]id=([a-zA-Z0-9_-]+)/)||url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)||url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if(!idMatch)return url;
+  const id=idMatch[1];
+  // lh3.googleusercontent.com/d/ID works for publicly shared Drive files in <img> tags
+  // without CORS/redirect issues. Falls back via onError in the img element.
+  return 'https://lh3.googleusercontent.com/d/'+id;;
 }
 function fmtW(w){return'W'+String(w).padStart(2,'0');}
 const pct=(n,d)=>d===0?0:Math.round(n/d*100);
@@ -378,7 +381,18 @@ function ChartComp({type,data,options,style={}}){
 // ════════════════════════════════════════════════════════
 function resolveVideoUrl(url){
   if(!url||typeof url!=='string')return null;
-  // Google Drive /file/d/ID/view|/preview|/edit
+  // Extract Drive file ID from ANY Drive URL format
+  const anyId=url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/)||
+               url.match(/[?&]id=([a-zA-Z0-9_-]+)/)||
+               url.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  if(anyId&&url.includes('drive.google.com')||anyId&&url.includes('googleusercontent.com')){
+    const id=anyId[1];
+    return{type:'drive',id,
+      preview:`https://drive.google.com/file/d/${id}/preview`,
+      download:`https://drive.google.com/uc?id=${id}&export=download`,
+      view:`https://drive.google.com/file/d/${id}/view`};
+  }
+  // Google Drive /file/d/ID/view|/preview|/edit (kept for clarity)
   const gdFile=url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
   if(gdFile){const id=gdFile[1];return{type:'drive',id,
     preview:`https://drive.google.com/file/d/${id}/preview`,
@@ -466,10 +480,12 @@ function VideoPlayer({src,name}){
   if(resolved.type==='drive'){
     return html`<div style=${{display:'flex',flexDirection:'column',width:'100%',gap:10}}>
       <iframe
-        src=${resolved.preview}
+        src=${resolved.preview+'?autoplay=0'}
         style=${{width:'100%',height:'460px',border:'none',borderRadius:10,background:'#000',display:'block'}}
-        allow="autoplay; fullscreen; picture-in-picture"
-        allowfullscreen/>
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+        allowfullscreen
+        loading="eager"
+        referrerpolicy="no-referrer-when-downgrade"/>
       <div style=${{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
         <a href=${resolved.view} target="_blank"
           style=${{background:'rgba(6,182,212,.1)',color:C.cyan,border:`1px solid ${C.cyan}44`,borderRadius:6,padding:'8px 18px',fontFamily:mono,fontSize:11,fontWeight:700,textDecoration:'none',letterSpacing:.6,cursor:'pointer'}}>
@@ -620,7 +636,7 @@ function Lightbox({items,idx:start=0,onClose}){
     <div onClick=${e=>e.stopPropagation()} style=${{display:'flex',flexDirection:'column',alignItems:'center',width:'100%',maxWidth:'94vw',gap:10}}>
       ${/* ── Header bar ── */null}
       <div style=${{display:'flex',justifyContent:'space-between',width:'100%',alignItems:'center'}}>
-        <span style=${{color:C.muted,fontFamily:mono,fontSize:10,letterSpacing:1}}>${isImg?'📷 IMAGE':'🎥 VIDEO'} &nbsp;${safe+1} / ${items.length}</span>
+        <span style=${{color:C.muted,fontFamily:mono,fontSize:10,letterSpacing:1}}>${isImg?'📷 IMAGE':'🎥 VIDEO'}  ${safe+1} / ${items.length}</span>
         <div style=${{display:'flex',gap:8,alignItems:'center'}}>
           ${isImg?html`<div style=${{display:'flex',gap:3,background:'rgba(255,255,255,.06)',borderRadius:6,padding:'3px 6px',alignItems:'center'}}>
             <button onClick=${()=>setZoom(z=>Math.min(4,+(z+.5).toFixed(1)))} style=${{background:'transparent',color:C.muted,border:'none',width:26,height:26,cursor:'pointer',fontSize:16,borderRadius:4,lineHeight:1}}>+</button>
@@ -634,9 +650,28 @@ function Lightbox({items,idx:start=0,onClose}){
       ${/* ── Media area ── */null}
       <div style=${{width:'100%',background:'#050709',borderRadius:12,display:'flex',justifyContent:'center',alignItems:'center',minHeight:260,maxHeight:'70vh',overflow:'hidden',border:`1px solid ${C.border}`}}>
         ${isImg
-          ?html`<img src=${driveImgSrc(it.src||it.url||'')}
+          ?html`<img
+              src=${driveImgSrc(it.src||it.url||'')}
               style=${{maxWidth:'100%',maxHeight:'70vh',objectFit:'contain',transform:`scale(${zoom})`,transition:'transform .2s',cursor:zoom>1?'grab':'default'}}
-              onError=${e=>{e.target.style.display='none';e.target.parentElement.innerHTML='<div style="color:#6b7280;fontFamily:monospace;padding:40px;fontSize:11px">Image unavailable</div>';}}
+              onError=${e=>{
+                // Cascade through fallback URLs
+                const orig=it.src||it.url||'';
+                const idM=orig.match(/[?&]id=([a-zA-Z0-9_-]+)/)||orig.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)||orig.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                const id=idM?idM[1]:null;
+                if(e.target.dataset.attempt==='0'&&id){
+                  e.target.dataset.attempt='1';
+                  e.target.src='https://drive.google.com/uc?id='+id+'&export=view';
+                }else if(e.target.dataset.attempt==='1'&&id){
+                  e.target.dataset.attempt='2';
+                  e.target.src='https://drive.google.com/thumbnail?id='+id+'&sz=w800';
+                }else{
+                  // All attempts failed — show open-in-Drive link
+                  const p=e.target.parentElement;
+                  const link=id?'https://drive.google.com/file/d/'+id+'/view':orig;
+                  p.innerHTML='<div style="text-align:center;padding:40px 20px"><div style="font-size:40px;margin-bottom:12px">🖼</div><div style="color:#6b7280;font-family:monospace;font-size:11px;margin-bottom:16px">Image unavailable in browser</div><a href="'+link+'" target="_blank" rel="noopener" style="background:#1e40af;color:#bfdbfe;border:1px solid #3b82f6;border-radius:6px;padding:8px 20px;font-family:monospace;font-size:11px;text-decoration:none;display:inline-block">⬡ OPEN IN GOOGLE DRIVE</a></div>';
+                }
+              }}
+              data-attempt="0"
             />`
           :html`<${VideoPlayer} src=${it.url||it.src} name=${it.name||'audit_video'}/>`}
       </div>
@@ -646,8 +681,8 @@ function Lightbox({items,idx:start=0,onClose}){
           style=${{width:50,height:50,borderRadius:6,overflow:'hidden',cursor:'pointer',
           border:`2px solid ${j===safe?C.accent:C.border}`,background:'#050709',transition:'border-color .15s',flexShrink:0}}>
           ${x.type==='image'
-            ?html`<img src=${x.src||x.url} style=${{width:'100%',height:'100%',objectFit:'cover'}}
-                onError=${e=>e.target.style.opacity='.3'}/>`
+            ?html`<img src=${driveImgSrc(x.src||x.url||'')} style=${{width:'100%',height:'100%',objectFit:'cover'}}
+                onError=${e=>{const idM=(x.src||x.url||'').match(/[?&]id=([a-zA-Z0-9_-]+)/);if(idM&&e.target.dataset.t!=='1'){e.target.dataset.t='1';e.target.src='https://drive.google.com/uc?id='+idM[1]+'&export=view';}else{e.target.style.opacity='.3';}}}/>`
             :html`<div style=${{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#0a2030',fontSize:20}}>🎥</div>`}
         </div>`)}
       </div>`:''}
