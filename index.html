@@ -1560,15 +1560,26 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
   // Build improvement areas
   const improvementRows=fails.length===0
     ?'<tr><td colspan="3" style="text-align:center;color:#16a34a;padding:18px">✓ No failures — excellent performance!</td></tr>'
-    :fails.map(f=>`<tr>
+    :fails.map(f=>{
+      const mediaHtml=f.imgs.map(u=>`<img src="${u}" style="width:60px;height:50px;object-fit:cover;border-radius:4px;margin:2px;border:1px solid #e2e8f0" loading="lazy" onerror="this.style.display='none'"/>`).join('')
+        +f.vids.map(u=>`<a href="${u}" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;width:60px;height:50px;background:#0f172a;border:1px solid #1e40af;border-radius:4px;color:#60a5fa;font-size:9px;text-decoration:none;margin:2px">🎥 PLAY</a>`).join('');
+      return `<tr>
         <td style="color:#991b1b;font-weight:600">${f.q||f.neg||'—'}</td>
         <td style="color:#64748b;font-size:10px">${f.area}</td>
         <td style="color:#92400e;font-style:italic">${f.remark||'—'}</td>
-      </tr>`).join('');
+        <td style="min-width:80px">${mediaHtml}</td>
+      </tr>`;}).join('');
 
-  // Build snap collated
-  const snapSections=AREAS.map(area=>{
-    const aMedia=allMedia.filter(m=>m.area===area);
+  // Build snap collated — also include flat column media as fallback
+  // Merge per-question media (allMedia) with flat column URLs (rec['Image_URLs'], rec['Video_URLs'])
+  const flatImgURLs=String(rec?.['Image_URLs']||'').split('\n').filter(u=>u&&u.startsWith('http'));
+  const flatVidURLs=String(rec?.['Video_URLs']||'').split('\n').filter(u=>u&&u.startsWith('http'));
+  const allMediaWithFlat=[...allMedia,
+    ...flatImgURLs.filter(u=>!allMedia.some(m=>m.src===driveImgSrc(u))).map(u=>({type:'image',src:driveImgSrc(u),area:'EVIDENCE',q:'Uploaded Evidence'})),
+    ...flatVidURLs.filter(u=>!allMedia.some(m=>m.url===u)).map(u=>({type:'video',url:u,area:'EVIDENCE',q:'Uploaded Evidence'}))
+  ];
+  const snapSections=[...AREAS,'EVIDENCE'].map(area=>{
+    const aMedia=allMediaWithFlat.filter(m=>m.area===area);
     if(!aMedia.length)return'';
     const imgs=aMedia.filter(m=>m.type==='image').map(m=>
       `<img src="${m.src}" style="width:150px;height:110px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0" loading="lazy" onerror="this.style.display='none'"/>`
@@ -1669,12 +1680,12 @@ table.main tbody tr:hover{background:#f8fafc}
 
 <div class="section-title">B. IMPROVEMENT AREAS (${fails.length} issue${fails.length!==1?'s':''})</div>
 <table class="main">
-  <thead><tr><th>IDENTIFIED ISSUE</th><th style="width:180px">AREA</th><th style="width:200px">REMARK</th></tr></thead>
+  <thead><tr><th>IDENTIFIED ISSUE</th><th style="width:160px">AREA</th><th style="width:180px">REMARK</th><th style="width:100px">MEDIA</th></tr></thead>
   <tbody>${improvementRows}</tbody>
 </table>
 
 <div class="section-title" style="page-break-before:always">C. SNAP COLLATED — EVIDENCE MEDIA</div>
-${snapSections||'<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>'}
+${(allMediaWithFlat.length>0?snapSections.join(''):'') || '<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>'}
 
 <div class="section-title">D. FULL CHECKLIST RESPONSES</div>
 ${checklistSections}
@@ -1729,8 +1740,42 @@ function DCDetailTab({records,week,site,setSite}){
   const areaScores=useMemo(()=>AREAS.map(a=>({area:a,score:Number(rec?.[ACOL[a]])||0,color:ACLR[a],short:ASHORT[a]})),[rec]);
   const score=Number(rec?.['Overall_Score_%'])||0;const auditor=String(rec?.['Auditor']||'—');const date=String(rec?.['Audit_Date']||'—');
   const passC=Number(rec?.['Pass_Count'])||0;const failC=Number(rec?.['Fail_Count'])||0;const naC=Number(rec?.['NA_Count'])||0;
-  const fails=useMemo(()=>{const out=[];AREAS.forEach(area=>{Object.entries(answers[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL'){const imgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));const vids=(a.videoURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('blob:')));out.push({area,q,remark:a.remark||'',imgs,vids});}});});return out;},[answers]);
-  const allMedia=useMemo(()=>{const items=[];AREAS.forEach(area=>{Object.entries(answers[area]||{}).forEach(([q,a])=>{(a?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))items.push({type:'image',src:u,area,q});});(a?.videoURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('blob:')))items.push({type:'video',url:u,area,q});});});});return items;},[answers]);
+  // ── fails: per-question FAIL items with media; apply driveImgSrc for reliable rendering ──
+  const fails=useMemo(()=>{
+    const out=[];
+    AREAS.forEach(area=>{
+      Object.entries(answers[area]||{}).forEach(([q,a])=>{
+        if(a?.answer==='FAIL'){
+          const imgs=(a.imageURLs||[]).filter(u=>u&&u.startsWith('http')).map(driveImgSrc);
+          const vids=(a.videoURLs||[]).filter(u=>u&&u.startsWith('http'));
+          out.push({area,q,remark:a.remark||'',imgs,vids});
+        }
+      });
+    });
+    return out;
+  },[answers]);
+  // ── allMedia: read from BOTH Answers_JSON (per-question) AND flat columns (fallback) ──
+  const allMedia=useMemo(()=>{
+    const items=[];
+    const seen=new Set();// deduplicate by URL
+    const addImg=(src,area,q)=>{const u=driveImgSrc(src);if(u&&!seen.has(u)){seen.add(u);items.push({type:'image',src:u,area,q});}};
+    const addVid=(url,area,q)=>{if(url&&!seen.has(url)){seen.add(url);items.push({type:'video',url,area,q});}};
+    // Primary: per-question media from Answers_JSON
+    AREAS.forEach(area=>{
+      Object.entries(answers[area]||{}).forEach(([q,a])=>{
+        (a?.imageURLs||[]).forEach(u=>{if(u&&u.startsWith('http'))addImg(u,area,q);});
+        (a?.videoURLs||[]).forEach(u=>{if(u&&u.startsWith('http'))addVid(u,area,q);});
+      });
+    });
+    // Fallback: flat Image_URLs / Video_URLs columns (ground truth from Drive uploads)
+    if(rec){
+      const flatI=String(rec['Image_URLs']||'').split('\n').filter(u=>u&&u.startsWith('http'));
+      const flatV=String(rec['Video_URLs']||'').split('\n').filter(u=>u&&u.startsWith('http'));
+      flatI.forEach(u=>addImg(u,'EVIDENCE','Uploaded Evidence'));
+      flatV.forEach(u=>addVid(u,'EVIDENCE','Uploaded Evidence'));
+    }
+    return items;
+  },[answers,rec]);
   const barData={labels:areaScores.map(a=>a.short),datasets:[{label:'Score %',data:areaScores.map(a=>a.score),backgroundColor:areaScores.map(a=>a.color+'bb'),borderColor:areaScores.map(a=>a.color),borderWidth:1,borderRadius:4}]};
   const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#fff',font:{size:11,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:3}},scales:{x:{ticks:{color:C.muted,font:{size:10}},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
   return html`<div class="fi">
@@ -1824,7 +1869,7 @@ function DCDetailTab({records,week,site,setSite}){
       ${sub==='snaps'?html`<div class="card" style=${{padding:18}} class="fi">
         <${SH}>Snap Collated — All Media</${SH}>
         ${allMedia.length===0?html`<${Empty} icon="📷" title="NO MEDIA RECORDED" sub="Images/videos will appear here once uploaded."/>`:html`
-          ${AREAS.map(area=>{const aMedia=allMedia.filter(m=>m.area===area);if(!aMedia.length)return null;
+          ${[...AREAS,'EVIDENCE'].map(area=>{const aMedia=allMedia.filter(m=>m.area===area);if(!aMedia.length)return null;
             return html`<div key=${area} style=${{marginBottom:20}}>
               <div style=${{color:ACLR[area],fontFamily:mono,fontSize:10,fontWeight:700,marginBottom:10,padding:'5px 12px',background:ACLR[area]+'10',borderLeft:`3px solid ${ACLR[area]}`,borderRadius:'0 5px 5px 0',letterSpacing:.8}}>${area}</div>
               <div style=${{display:'flex',flexWrap:'wrap',gap:8}}>
