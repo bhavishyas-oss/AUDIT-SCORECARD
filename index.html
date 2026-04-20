@@ -920,6 +920,16 @@ function FillScorecard({onBack}){
   const setFld=(ar,q,f,v)=>setAns(p=>({...p,[ar]:{...(p[ar]||{}),[q]:{...(p[ar]?.[q]||{answer:null,remark:'',images:[],videos:[]}),[f]:v}}}));
   const getA=(ar,q)=>ans[ar]?.[q]||{answer:null,remark:'',images:[],videos:[]};
 
+  // ── Safe back: warn if any section has been started but not submitted ──
+  const safeBack=()=>{
+    // No warning needed if: still on info screen, or already submitted, or nothing filled yet
+    const hasWork=step!=='info'&&step!=='done'&&(doneAr.length>0||Object.keys(ans).length>0);
+    if(hasWork){
+      if(!window.confirm('Data will not be saved. Do you really want to exit?'))return;
+    }
+    onBack();
+  };
+
   const startCam=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});setStream(s);setCam(true);setTimeout(()=>{if(vRef.current)vRef.current.srcObject=s;},80);}catch{alert('Camera unavailable.');}};
   const capPhoto=(ar,q)=>{const el=cRef.current,vd=vRef.current;if(!el||!vd)return;el.width=vd.videoWidth||640;el.height=vd.videoHeight||480;el.getContext('2d').drawImage(vd,0,0);const img=el.toDataURL();if(stream)stream.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);setAnn({src:img,ar,q});};
   const stopCam=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());setStream(null);setCam(false);};
@@ -1189,7 +1199,7 @@ function FillScorecard({onBack}){
       style=${{width:'100%',background:C.abl,color:C.accent,border:`2px solid ${C.accent}`,borderRadius:8,padding:'16px 0',fontSize:15,fontFamily:mono,fontWeight:700,cursor:'pointer',marginTop:8,letterSpacing:1}}>
       START / RESUME AUDIT →
     </button>
-    <button onClick=${onBack} style=${{width:'100%',background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 0',fontFamily:mono,fontSize:13,cursor:'pointer',marginTop:10}}>← BACK TO HOME</button>
+    <button onClick=${safeBack} style=${{width:'100%',background:'transparent',color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:'13px 0',fontFamily:mono,fontSize:13,cursor:'pointer',marginTop:10}}>← BACK TO HOME</button>
   </div></div>`;
 }
 // ════════════════════════════════════════════════════════
@@ -1402,19 +1412,33 @@ function OverviewTab({records,week}){
   const areaAvgs=useMemo(()=>AREAS.map(area=>({area,short:ASHORT[area],color:ACLR[area],
     avg:dcAvgs.length?Math.round(dcAvgs.reduce((s,x)=>s+(x.areaScores[area]||0),0)/dcAvgs.length):0})),[dcAvgs]);
 
-  // Partial entries for selected week — visibility card only, not used in any calculations
+  // ── Partial entries: correct classification ──
+  // A record is truly partial ONLY when Status='Partial' AND not all 6 area statuses are TRUE.
+  // If all 6 area flags are TRUE it is effectively complete (Status may lag behind due to resume).
+  const isStatusTrue=v=>v===true||String(v||'').toLowerCase()==='true';
   const weekPartials=useMemo(()=>
-    records.filter(r=>Number(r['Week_No'])===week&&String(r['Status']||'').trim()==='Partial')
+    records.filter(r=>{
+      if(Number(r['Week_No'])!==week)return false;
+      const st=String(r['Status']||'').trim();
+      // Must be explicitly Partial
+      if(st!=='Partial')return false;
+      // Check if all 6 area status flags are true (fully filled but Status not yet updated)
+      const allDone=isStatusTrue(r['IOS_Status'])&&isStatusTrue(r['BBB_Status'])&&
+        isStatusTrue(r['PSA_Status'])&&isStatusTrue(r['SSA_Status'])&&
+        isStatusTrue(r['EXC_Status'])&&isStatusTrue(r['VOL_Status']);
+      // If all areas done, it is NOT partial (fully filled, just needs final submit)
+      return !allDone;
+    })
     .map(r=>({
       site:String(r['Site']||'—'),
       auditor:String(r['Auditor']||'—'),
       date:String(r['Audit_Date']||'—'),
-      iosOk:r['IOS_Status']===true||String(r['IOS_Status']).toLowerCase()==='true',
-      bbbOk:r['BBB_Status']===true||String(r['BBB_Status']).toLowerCase()==='true',
-      psaOk:r['PSA_Status']===true||String(r['PSA_Status']).toLowerCase()==='true',
-      ssaOk:r['SSA_Status']===true||String(r['SSA_Status']).toLowerCase()==='true',
-      excOk:r['EXC_Status']===true||String(r['EXC_Status']).toLowerCase()==='true',
-      volOk:r['VOL_Status']===true||String(r['VOL_Status']).toLowerCase()==='true',
+      iosOk:isStatusTrue(r['IOS_Status']),
+      bbbOk:isStatusTrue(r['BBB_Status']),
+      psaOk:isStatusTrue(r['PSA_Status']),
+      ssaOk:isStatusTrue(r['SSA_Status']),
+      excOk:isStatusTrue(r['EXC_Status']),
+      volOk:isStatusTrue(r['VOL_Status']),
     }))
   ,[records,week]);
 
@@ -1713,20 +1737,20 @@ function DCDetailTab({records,week,site,setSite}){
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
     <div style=${{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap',alignItems:'flex-end'}}>
       <div>
-        <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>SELECT SITE</div>
+        <div style=${{color:'#E9DF43',fontSize:12,fontFamily:mono,letterSpacing:1,fontWeight:700,marginBottom:8}}>SELECT SITE</div>
         <select value=${site} onChange=${e=>setSite(e.target.value)} style=${{background:C.card,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 16px',fontSize:13,fontFamily:mono,cursor:'pointer',minWidth:200}}>
           ${SITES.map(s=>html`<option key=${s}>${s}</option>`)}
         </select>
       </div>
       <div>
-        <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>SELECT DATE</div>
+        <div style=${{color:'#E9DF43',fontSize:12,fontFamily:mono,letterSpacing:1,fontWeight:700,marginBottom:8}}>SELECT DATE</div>
         <select value=${selDate} onChange=${e=>setSelDate(e.target.value)} style=${{background:C.card,color:C.text,border:`1px solid ${C.accent}44`,borderRadius:8,padding:'10px 16px',fontSize:13,fontFamily:mono,cursor:'pointer',minWidth:150}}>
           ${dates.map(d=>html`<option key=${d} value=${d}>${d}</option>`)}
           ${dates.length===0?html`<option value="">— no data —</option>`:''}
         </select>
       </div>
       <div>
-        <div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>AUDITOR NAME</div>
+        <div style=${{color:'#E9DF43',fontSize:12,fontFamily:mono,letterSpacing:1,fontWeight:700,marginBottom:8}}>AUDITOR NAME</div>
         <select value=${selAuditor} onChange=${e=>setSelAuditor(e.target.value)} style=${{background:C.card,color:C.text,border:`1px solid ${C.accent}44`,borderRadius:8,padding:'10px 16px',fontSize:13,fontFamily:mono,cursor:'pointer',minWidth:160}}>
           ${auditors.map(a=>html`<option key=${a} value=${a}>${a}</option>`)}
           ${auditors.length===0?html`<option value="">— no auditors —</option>`:''}
@@ -1815,13 +1839,36 @@ function DCDetailTab({records,week,site,setSite}){
         ${AREAS.map(area=>{const qs=answers[area]||{};
           return html`<div key=${area} style=${{marginBottom:22}}>
             <div style=${{color:ACLR[area],fontFamily:mono,fontSize:10,fontWeight:700,padding:'6px 12px',background:ACLR[area]+'10',borderLeft:`3px solid ${ACLR[area]}`,borderRadius:'0 5px 5px 0',marginBottom:8,letterSpacing:.8}}>${area}</div>
-            ${(QS[area]||[]).map((q,i)=>{const a=qs[q]||{};const ac=a.answer==='PASS'?C.pass:a.answer==='FAIL'?C.fail:C.na;
+            ${(QS[area]||[]).map((q,i)=>{
+              const a=qs[q]||{};
+              const ac=a.answer==='PASS'?C.pass:a.answer==='FAIL'?C.fail:C.na;
+              const qImgs=(a.imageURLs||[]).filter(u=>u&&(u.startsWith('http')||u.startsWith('data:')));
+              const qVids=(a.videoURLs||[]).filter(u=>u&&u.startsWith('http'));
+              const hasMedia=qImgs.length>0||qVids.length>0;
+              const mediaItems=[...qImgs.map(s=>({type:'image',src:s})),...qVids.map(s=>({type:'video',url:s}))];
               return html`<div key=${i} style=${{padding:'10px 8px',borderBottom:`1px solid ${C.border}18`,background:a.answer==='FAIL'?C.fail+'06':'transparent',borderRadius:4,marginBottom:2}}>
-                <div style=${{display:'flex',gap:10,alignItems:'flex-start',marginBottom:a.remark?6:0}}>
-                  <span style=${{background:ac+'20',color:ac,border:`1px solid ${ac}44`,borderRadius:3,padding:'2px 8px',fontFamily:mono,fontSize:9,fontWeight:700,flexShrink:0,marginTop:2,minWidth:44,textAlign:'center'}}>${a.answer||'—'}</span>
-                  <div style=${{color:a.answer==='FAIL'?'#fca5a5':C.text,fontSize:12,lineHeight:1.5,flex:1}}>${q}</div>
+                <div style=${{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
+                  <div style=${{flex:1,minWidth:200}}>
+                    <div style=${{display:'flex',gap:10,alignItems:'flex-start',marginBottom:a.remark?6:0}}>
+                      <span style=${{background:ac+'20',color:ac,border:`1px solid ${ac}44`,borderRadius:3,padding:'2px 8px',fontFamily:mono,fontSize:9,fontWeight:700,flexShrink:0,marginTop:2,minWidth:44,textAlign:'center'}}>${a.answer||'—'}</span>
+                      <div style=${{color:a.answer==='FAIL'?'#fca5a5':C.text,fontSize:12,lineHeight:1.5}}>${q}</div>
+                    </div>
+                    ${a.remark?html`<div style=${{marginLeft:62,color:'#fbbf24',fontSize:11,fontStyle:'italic',lineHeight:1.5,paddingLeft:8,borderLeft:'2px solid #fbbf2433'}}>↳ ${a.remark}</div>`:''}
+                  </div>
+                  ${hasMedia?html`<div style=${{display:'flex',gap:6,flexWrap:'wrap',flexShrink:0,alignItems:'flex-start',marginTop:2}}>
+                    ${qImgs.map((u,j)=>html`<img key=${j} src=${u}
+                      onClick=${()=>setLb({items:mediaItems,idx:j})}
+                      style=${{width:64,height:64,objectFit:'cover',borderRadius:5,cursor:'pointer',border:`2px solid ${ac}55`,transition:'all .15s'}}
+                      onMouseEnter=${e=>{e.currentTarget.style.transform='scale(1.08)';e.currentTarget.style.borderColor=ac;}}
+                      onMouseLeave=${e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.borderColor=ac+'55';}}
+                      onError=${e=>e.currentTarget.style.display='none'}/>`)}
+                    ${qVids.map((u,j)=>html`<div key=${j}
+                      onClick=${()=>setLb({items:mediaItems,idx:qImgs.length+j})}
+                      style=${{width:64,height:64,background:'#0a2030',border:`2px solid #06b6d455`,borderRadius:5,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:20,gap:2,transition:'border-color .15s'}}
+                      onMouseEnter=${e=>e.currentTarget.style.borderColor=C.cyan}
+                      onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d455'}>🎥<span style=${{color:C.cyan,fontSize:7,fontFamily:mono}}>PLAY</span></div>`)}
+                  </div>`:''}
                 </div>
-                ${a.remark?html`<div style=${{marginLeft:62,color:'#fbbf24',fontSize:11,fontStyle:'italic',lineHeight:1.5,paddingLeft:8,borderLeft:'2px solid #fbbf2433'}}>↳ ${a.remark}</div>`:''}
               </div>`;
             })}
           </div>`;
@@ -1892,7 +1939,7 @@ function WeeklyPerfTab({records,site,setSite,activeWeeks}){
     </div>
     <div class="card" style=${{padding:18,marginBottom:20}}>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:16,flexWrap:'wrap',gap:14}}>
-        <div><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>SELECT DC</div>
+        <div><div style=${{color:'#E9DF43',fontSize:12,fontFamily:mono,letterSpacing:1,fontWeight:700,marginBottom:8}}>SELECT DC</div>
           <select value=${site} onChange=${e=>setSite(e.target.value)} style=${{background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 16px',fontSize:13,fontFamily:mono,cursor:'pointer',minWidth:200}}>${SITES.map(s=>html`<option key=${s}>${s}</option>`)}</select>
         </div>
         <button onClick=${downloadReport} style=${{background:'linear-gradient(135deg,#065f46,#059669)',color:'#fff',border:'none',borderRadius:8,padding:'11px 22px',fontFamily:mono,fontSize:12,fontWeight:700,cursor:'pointer',letterSpacing:.8,boxShadow:'0 4px 16px rgba(16,185,129,.25)',transition:'all .2s'}} onMouseEnter=${e=>{e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave=${e=>{e.currentTarget.style.transform='translateY(0)';}}>⬇ DC PERFORMANCE REPORT (PDF)</button>
@@ -1959,7 +2006,7 @@ function DCFacilityTab({records,week}){
   return html`<div class="fi">
     ${lb?html`<${Lightbox} items=${lb.items} idx=${lb.idx} onClose=${()=>setLb(null)}/>`:''}
     <div style=${{display:'flex',gap:16,alignItems:'center',marginBottom:24,flexWrap:'wrap'}}>
-      <div><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.5,marginBottom:6}}>FACILITY SIZE</div>
+      <div><div style=${{color:'#E9DF43',fontSize:12,fontFamily:mono,letterSpacing:1,fontWeight:700,marginBottom:8}}>FACILITY SIZE</div>
         <div style=${{display:'flex',gap:8}}>${['Large','Medium','Small'].map(s=>html`<button key=${s} onClick=${()=>setSize(s)} style=${{background:size===s?sizeColor[s]+'20':'transparent',color:size===s?sizeColor[s]:C.muted,border:`2px solid ${size===s?sizeColor[s]:C.border}`,borderRadius:8,padding:'9px 20px',fontFamily:mono,fontSize:11,fontWeight:size===s?700:500,cursor:'pointer',letterSpacing:.8,transition:'all .18s'}}>${s.toUpperCase()}</button>`)}</div>
       </div>
       <div style=${{marginLeft:'auto',background:`linear-gradient(135deg,${sizeColor[size]}12,${sizeColor[size]}06)`,border:`1px solid ${sizeColor[size]}33`,borderRadius:10,padding:'12px 22px',textAlign:'center',minWidth:160}}>
@@ -2062,7 +2109,7 @@ function Dashboard({onBack}){
       </div>
       <div style=${{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'8px 0'}}>
         <div>
-          <div style=${{color:C.muted,fontSize:8,fontFamily:mono,letterSpacing:1.2,marginBottom:3,textAlign:'center'}}>WEEK</div>
+          <div style=${{color:'#E9DF43',fontSize:10,fontFamily:mono,fontWeight:700,letterSpacing:1.5,marginBottom:3,textAlign:'center'}}>WEEK</div>
           <select value=${displayWeek} onChange=${e=>setSelWeek(Number(e.target.value))} style=${{background:'rgba(0,0,0,.45)',color:'#E9DF43',border:'2px solid rgba(233,223,67,.45)',borderRadius:8,padding:'7px 14px',fontSize:20,fontFamily:mono,fontWeight:700,cursor:'pointer',minWidth:90}}>
             ${activeWeeks.length>0?activeWeeks.map(w=>html`<option key=${w} value=${w}>${fmtW(w)}</option>`):html`<option value=${1}>${fmtW(1)}</option>`}
           </select>
