@@ -1714,12 +1714,20 @@ function DCDetailTab({records,week,site,setSite}){
   const[sub,setSub]=useState('performance');const[lb,setLb]=useState(null);
   const[selDate,setSelDate]=useState('');
   const[selAuditor,setSelAuditor]=useState('');
-  // DC Detail View shows ONLY fully completed records (Status='Complete' or legacy blank)
-  // Partial records are shown in the dedicated Partially Filled tab, not here
+  // DC Detail View shows records that are fully completed OR effectively complete.
+  // "Effectively complete" = all 6 area boolean status flags are TRUE
+  // (covers cases where all sections were saved but final Submit wasn't pressed).
+  const isAreaDone=r=>v=>v===true||String(r[v]||'').toLowerCase()==='true';
+  const isEffectivelyComplete=r=>{
+    const chk=k=>r[k]===true||String(r[k]||'').toLowerCase()==='true';
+    return chk('IOS_Status')&&chk('BBB_Status')&&chk('PSA_Status')&&
+           chk('SSA_Status')&&chk('EXC_Status')&&chk('VOL_Status');
+  };
   const siteWeekRecs=useMemo(()=>records.filter(r=>{
     if(String(r['Site'])!==site||Number(r['Week_No'])!==week)return false;
     const st=String(r['Status']||'').trim();
-    return !st||st==='Complete'; // blank Status = legacy complete entry
+    // Show: Complete, legacy blank, OR Partial-but-all-areas-done
+    return !st||st==='Complete'||(st==='Partial'&&isEffectivelyComplete(r));
   }),[records,site,week]);
   // Unique dates for this site+week
   const dates=useMemo(()=>[...new Set(siteWeekRecs.map(r=>String(r['Audit_Date']||'')).filter(Boolean))].sort(),[siteWeekRecs]);
