@@ -1735,11 +1735,19 @@ ${checklistSections}
 </div>
 </body></html>`;
 
-  const w=window.open('','_blank');
-  if(!w){alert('Popup blocked. Please allow popups for this site and try again.');return;}
-  w.document.write(html);w.document.close();
-  // Auto-trigger print after images load
-  setTimeout(()=>w.focus(),400);
+  // Use Blob URL — never blocked by popup blockers or CSP
+  // Revoke after 60 s to free memory
+  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  const blobUrl=URL.createObjectURL(blob);
+  const w=window.open(blobUrl,'_blank','noopener,noreferrer');
+  if(!w){
+    // Fallback: trigger a direct file download instead of opening in new tab
+    const a=document.createElement('a');
+    a.href=blobUrl;
+    a.download='Audit_Report_'+site.replace(/\s+/g,'_')+'_'+fmtW(week)+'_'+new Date().toISOString().slice(0,10)+'.html';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  }
+  setTimeout(()=>URL.revokeObjectURL(blobUrl),60000);
 }
 
 // ════════════════════════════════════════════════════════
