@@ -313,17 +313,17 @@ const CACHE_TTL=60000;// 60 s
 
 // ── JSONP transport (bypasses CORS for GET) ──
 // Bug-fix: _t is added only ONCE (in the appended query, not in the original URL)
-function _jsonp(url){
+// JSONP — 30s timeout + 1 automatic retry for mobile networks
+function _jsonp(url,_r=false){
   return new Promise((res,rej)=>{
     const cb='_gs_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);
     const tag=document.createElement('script');
-    const t=setTimeout(()=>{cleanup();rej(new Error('Timed out — verify Apps Script: Execute as Me, Access: Anyone'));},15000);
+    const t=setTimeout(()=>{cleanup();if(!_r){console.warn('[JSONP] timeout, retrying...');_jsonp(url,true).then(res).catch(rej);}else{rej(new Error('Connection timed out. Verify: 1) Apps Script URL correct, 2) Deployed as Execute as Me / Access Anyone, 3) Internet connection active.'));}},30000);
     const cleanup=()=>{clearTimeout(t);try{delete window[cb];}catch(_){}tag.parentNode?.removeChild(tag);};
     window[cb]=data=>{cleanup();res(data);};
-    // Append callback + cache-bust once, cleanly
     const sep=url.includes('?')?'&':'?';
     tag.src=url+sep+'callback='+cb+'&_cb='+Date.now();
-    tag.onerror=()=>{cleanup();rej(new Error('Cannot reach Apps Script. Check deployment URL.'));};
+    tag.onerror=()=>{cleanup();if(!_r){setTimeout(()=>_jsonp(url,true).then(res).catch(rej),1500);}else{rej(new Error('Cannot reach Apps Script. Check URL and deployment settings.'));}};
     document.head.appendChild(tag);
   });
 }
@@ -2061,20 +2061,79 @@ function WeeklyPerfTab({records,site,setSite,activeWeeks}){
   })}));
   const downloadReport=()=>{
     const allRecs=records.filter(r=>String(r['Site'])===site).sort((a,b)=>Number(a['Week_No'])-Number(b['Week_No']));
-    const fails={};allRecs.forEach(rec=>{const ans=parseAns(rec);AREAS.forEach(a=>{Object.entries(ans[a]||{}).forEach(([q,av])=>{if(av?.answer==='FAIL'){if(!fails[q])fails[q]={q,count:0,area:a};fails[q].count++;}});});});
-    const topFails=Object.values(fails).sort((a,b)=>b.count-a.count).slice(0,12);
-    const allImgs=[];allRecs.forEach(rec=>{const ans=parseAns(rec);AREAS.forEach(a=>{Object.values(ans[a]||{}).forEach(v=>{(v?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))allImgs.push({url:u,wk:rec['Week_No'],area:a});});});});});
-    const colBg=v=>v>=80?'#d1fae5':v>=60?'#fef3c7':'#fee2e2';const colFg=v=>v>=80?'#065f46':v>=60?'#92400e':'#991b1b';
-    const w=window.open('','_blank');if(!w)return alert('Popup blocked');
-    let body=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>DC Report — ${site}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:12px;background:#f8fafc;color:#1e293b;-webkit-print-color-adjust:exact}.page{max-width:1000px;margin:0 auto;padding:28px}.hdr{background:linear-gradient(135deg,#1e293b,#334155);color:#fff;padding:20px 24px;border-radius:8px;margin-bottom:20px}h1{font-size:20px;font-weight:800;margin-bottom:4px}h2{font-size:13px;font-weight:700;background:#f1f5f9;padding:8px 14px;border-left:4px solid #f59e0b;border-radius:0 4px 4px 0;margin:22px 0 10px}table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px}th{background:#1e293b;color:#f8fafc;padding:6px 10px;text-align:center}td{border:1px solid #e2e8f0;padding:6px 10px;text-align:center}.g{background:${colBg(85)};color:${colFg(85)};font-weight:700}.a{background:${colBg(70)};color:${colFg(70)};font-weight:700}.r{background:${colBg(50)};color:${colFg(50)};font-weight:700}.left{text-align:left}.img-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.img-grid img{width:130px;height:90px;object-fit:cover;border-radius:4px}footer{margin-top:36px;border-top:1px solid #e2e8f0;padding-top:12px;color:#94a3b8;text-align:center;font-size:10px}</style></head><body><div class="page"><div class="hdr"><h1>📋 ${site} — DC Performance Report</h1><p style="color:rgba(255,255,255,.7);font-size:11px;margin-top:4px">Generated: ${new Date().toLocaleString('en-IN')}</p></div>`;
-    body+=`<h2>WEEK-BY-WEEK PERFORMANCE</h2><table><tr><th class="left">WEEK</th><th>OVERALL %</th>${AREAS.map(a=>`<th>${ASHORT[a]}</th>`).join('')}<th>PASS</th><th>FAIL</th><th>NA</th></tr>`;
-    allRecs.forEach(rec=>{const sv=Number(rec['Overall_Score_%'])||0;const cls=sv>=80?'g':sv>=60?'a':'r';body+=`<tr><td class="left" style="font-weight:600">${fmtW(Number(rec['Week_No']))}</td><td class="${cls}">${sv}%</td>${AREAS.map(a=>{const v=Number(rec[ACOL[a]])||0;const c=v>=80?'g':v>=60?'a':'r';return`<td class="${c}">${v}%</td>`;}).join('')}<td>${rec['Pass_Count']||0}</td><td>${rec['Fail_Count']||0}</td><td>${rec['NA_Count']||0}</td></tr>`;});
-    body+=`</table><h2>TOP REPEATED FAILURES (${topFails.length})</h2><table><tr><th>COUNT</th><th class="left">ISSUE</th><th class="left">AREA</th></tr>`;
-    topFails.forEach(f=>{body+=`<tr><td style="background:#fee2e2;color:#991b1b;font-weight:700">${f.count}x</td><td class="left">${f.q}</td><td class="left" style="color:#64748b;font-size:10px">${f.area}</td></tr>`;});
-    body+=`</table>`;
-    if(allImgs.length>0){body+=`<h2>EVIDENCE IMAGES (${allImgs.length})</h2><div class="img-grid">${allImgs.map(i=>`<img src="${i.url}" loading="lazy"/>`).join('')}</div>`;}
-    body+=`<footer>Weekly Audit Scorecard · ${site} · ${new Date().getFullYear()}</footer></div></body></html>`;
-    w.document.write(body);w.document.close();setTimeout(()=>w.print(),800);
+    const colBg=v=>v>=80?'#d1fae5':v>=60?'#fef3c7':'#fee2e2';
+    const colFg=v=>v>=80?'#065f46':v>=60?'#92400e':'#991b1b';
+    // Build per-question failure map with aggregated media across all weeks
+    const failMap={};
+    allRecs.forEach(rec=>{
+      const ans=parseAns(rec);
+      AREAS.forEach(area=>{
+        Object.entries(ans[area]||{}).forEach(([q,a])=>{
+          if(a?.answer==='FAIL'){
+            if(!failMap[q])failMap[q]={q,area,count:0,imgs:[],vids:[],remarks:[]};
+            failMap[q].count++;
+            (a.imageURLs||[]).filter(u=>u&&u.startsWith('http')).forEach(u=>{
+              const idM=(u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/d\/([a-zA-Z0-9_-]+)/))?.[1];
+              const src=idM?'https://lh3.googleusercontent.com/d/'+idM:u;
+              if(!failMap[q].imgs.includes(src))failMap[q].imgs.push(src);
+            });
+            (a.videoURLs||[]).filter(u=>u&&u.startsWith('http')).forEach(u=>{
+              const idM=(u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/file\/d\/([a-zA-Z0-9_-]+)/))?.[1];
+              const href=idM?'https://drive.google.com/file/d/'+idM+'/view':u;
+              if(!failMap[q].vids.includes(href))failMap[q].vids.push(href);
+            });
+            if(a.remark&&!failMap[q].remarks.includes(a.remark))failMap[q].remarks.push(a.remark);
+          }
+        });
+      });
+    });
+    const topFails=Object.values(failMap).sort((a,b)=>b.count-a.count).slice(0,20);
+    const failRows=topFails.map(f=>{
+      const mediaHtml=
+        f.imgs.map(u=>'<a href="'+u+'" target="_blank"><img src="'+u+'" style="width:100px;height:70px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;cursor:pointer" loading="lazy"></a>').join('')+
+        f.vids.map(u=>'<a href="'+u+'" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;width:100px;height:70px;background:#0f172a;border:1px solid #1e40af;border-radius:4px;color:#60a5fa;font-size:11px;text-decoration:none;flex-direction:column;gap:2px">&#9654; VIDEO</a>').join('');
+      const remarkHtml=f.remarks.length?'<div style="color:#92400e;font-style:italic;margin-top:4px;font-size:10px">'+f.remarks.join('; ')+'</div>':'';
+      return '<div style="padding:12px 0;border-bottom:1px solid #f1f5f9">'+
+        '<div style="display:flex;gap:8px;align-items:flex-start">'+
+        '<span style="background:#fee2e2;color:#991b1b;font-weight:700;font-family:monospace;padding:2px 8px;border-radius:4px;font-size:10px;flex-shrink:0">'+f.count+'x</span>'+
+        '<div style="flex:1">'+
+        '<div style="color:#991b1b;font-weight:600;line-height:1.4">'+f.q+'</div>'+
+        '<div style="color:#64748b;font-size:10px;margin-top:2px">'+f.area+'</div>'+
+        remarkHtml+
+        (mediaHtml?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+mediaHtml+'</div>':'')+
+        '</div></div></div>';
+    }).join('');
+
+    const scoreRow=allRecs.length?allRecs[allRecs.length-1]:null;
+    const latestScore=scoreRow?Number(scoreRow['Overall_Score_%'])||0:0;
+
+    const html='<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+      '<title>DC Report - '+site+'</title>'+
+      '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;font-size:12px;background:#fff;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}.wrap{max-width:1000px;margin:0 auto;padding:28px}.hdr{background:linear-gradient(135deg,#0f4235,#1C856F);color:#fff;padding:22px 28px;border-radius:10px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;gap:16px}.hdr h1{font-size:19px;font-weight:800}.score-badge{background:#fff;border-radius:8px;padding:10px 18px;text-align:center;flex-shrink:0}.score-num{font-size:36px;font-weight:900;color:'+colFg(latestScore)+'}.h2-sec{font-size:12px;font-weight:700;background:#f1f5f9;padding:7px 14px;border-left:4px solid #1C856F;border-radius:0 4px 4px 0;margin:22px 0 10px;text-transform:uppercase;letter-spacing:.5px}table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px}th{background:#1C856F;color:#fff;padding:7px 10px;text-align:center;font-size:10px}td{border:1px solid #e2e8f0;padding:7px 10px;text-align:center}.g{background:#d1fae5;color:#065f46;font-weight:700}.a{background:#fef3c7;color:#92400e;font-weight:700}.r{background:#fee2e2;color:#991b1b;font-weight:700}.left{text-align:left}footer{margin-top:36px;border-top:1px solid #e2e8f0;padding-top:12px;color:#94a3b8;text-align:center;font-size:10px}@media print{.no-print{display:none!important}@page{margin:1cm}}</style></head><body>'+
+      '<div class="wrap">'+
+      '<div class="hdr"><div><div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.6);margin-bottom:4px">SHADOWFAX LOGISTICS</div><h1>&#128203; '+site+' &mdash; DC Performance Report</h1><div style="color:rgba(255,255,255,.7);font-size:10px;margin-top:5px">Generated: '+new Date().toLocaleString('en-IN')+' | Weeks: '+(allRecs.length?fmtW(Number(allRecs[0]['Week_No']))+' &ndash; '+fmtW(Number(allRecs[allRecs.length-1]['Week_No'])):'N/A')+'</div></div>'+
+      '<div class="score-badge"><div class="score-num">'+latestScore+'%</div><div style="font-size:9px;color:#64748b;font-family:monospace;margin-top:3px">LATEST SCORE</div></div></div>'+
+      '<div class="h2-sec">Week-by-Week Performance</div>'+
+      '<table><tr><th class="left">WEEK</th><th>OVERALL</th>'+AREAS.map(a=>'<th>'+ASHORT[a]+'</th>').join('')+'<th>PASS</th><th>FAIL</th></tr>'+
+      allRecs.map(rec=>{const sv=Number(rec['Overall_Score_%'])||0;const cl=sv>=80?'g':sv>=60?'a':'r';return'<tr><td class="left" style="font-weight:600">'+fmtW(Number(rec['Week_No']))+'<br><span style="font-weight:400;color:#64748b;font-size:9px">'+String(rec['Auditor']||'')+'</span></td><td class="'+cl+'">'+sv+'%</td>'+AREAS.map(a=>{const v=Number(rec[ACOL[a]])||0;const c2=v>=80?'g':v>=60?'a':'r';return'<td class="'+c2+'">'+(v?v+'%':'&mdash;')+'</td>';}).join('')+'<td>'+String(rec['Pass_Count']||0)+'</td><td>'+String(rec['Fail_Count']||0)+'</td></tr>';}).join('')+
+      '</table>'+
+      '<div class="h2-sec">Improvement Areas &mdash; '+topFails.length+' Recurring Failures (with Evidence)</div>'+
+      (failRows||'<p style="color:#16a34a;padding:12px 0">&#10003; No failures recorded.</p>')+
+      '<footer>Shadowfax Weekly Audit Scorecard &middot; '+site+' &middot; '+new Date().getFullYear()+'</footer></div>'+
+      '<div class="no-print" style="position:fixed;bottom:20px;right:20px;display:flex;gap:8px">'+
+      '<button onclick="window.print()" style="background:#1C856F;color:#fff;border:none;border-radius:8px;padding:11px 22px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(28,133,111,.4)">&#128424; PRINT / SAVE AS PDF</button>'+
+      '<button onclick="window.close()" style="background:#64748b;color:#fff;border:none;border-radius:8px;padding:11px 16px;font-size:13px;cursor:pointer">&#x2715; CLOSE</button></div>'+
+      '</body></html>';
+
+    const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+    const blobUrl=URL.createObjectURL(blob);
+    const w=window.open(blobUrl,'_blank','noopener,noreferrer');
+    if(!w){
+      const a=document.createElement('a');a.href=blobUrl;
+      a.download='DC_Report_'+site.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html';
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+    }
+    setTimeout(()=>URL.revokeObjectURL(blobUrl),60000);
   };
   const latestDcRec=useMemo(()=>{const dcRecs=records.filter(r=>String(r['Site'])===site).sort((a,b)=>Number(b['Week_No'])-Number(a['Week_No']));return dcRecs[0]||null;},[records,site]);
   // latestFails: only http URLs, driveImgSrc applied for reliable image display
@@ -2303,20 +2362,20 @@ function PartialTab({records,activeWeeks}){
 // ════════════════════════════════════════════════════════
 function Dashboard({onBack}){
   const[tab,setTab]=useState(0);
-  const[records,setRecords]=useState([]);
+  const[rawRecords,setRawRecords]=useState([]);
   const[loading,setLoading]=useState(true);
-  const[bgLoading,setBgLoading]=useState(false);// background refresh indicator
+  const[bgLoading,setBgLoading]=useState(false);
   const[error,setError]=useState('');
   const[lastSync,setLastSync]=useState(null);
   const[selWeek,setSelWeek]=useState(null);
   const[selSite,setSelSite]=useState(SITES[0]);
 
-  // allRecords = every record from sheet (for PartialTab)
-  // records = complete/effectively-complete only (for all KPI tabs)
-  // PartialTab receives allRecords to show partial entries
-  // allWeeks = weeks from all records for Partial tab week filter
-  const allRecords=records; // passed directly to PartialTab
-  const allWeeks=useMemo(()=>[...new Set(allRecords.map(r=>Number(r['Week_No'])).filter(Boolean))].sort((a,b)=>a-b),[allRecords]);
+  // records = fully complete entries only (for all KPI/dashboard tabs)
+  const chkArea=r=>{const b=k=>r[k]===true||String(r[k]||'').toLowerCase()==='true';return b('IOS_Status')&&b('BBB_Status')&&b('PSA_Status')&&b('SSA_Status')&&b('EXC_Status')&&b('VOL_Status');};
+  const records=useMemo(()=>rawRecords.filter(r=>{const st=String(r['Status']||'').trim();return !st||st==='Complete'||(st==='Partial'&&chkArea(r));}),[rawRecords]);
+  // allRecords = ALL records for PartialTab only
+  const allRecords=rawRecords;
+  const allWeeks=useMemo(()=>[...new Set(rawRecords.map(r=>Number(r['Week_No'])).filter(Boolean))].sort((a,b)=>a-b),[rawRecords]);
   const activeWeeks=useMemo(()=>[...new Set(records.map(r=>Number(r['Week_No'])).filter(Boolean))].sort((a,b)=>a-b),[records]);
 
   // When records load, auto-select the most recent week
@@ -2332,7 +2391,7 @@ function Dashboard({onBack}){
   const load=useCallback(async(force=false)=>{
     // First call (mount): always show spinner + hit the network.
     // Refresh button / interval: show bgLoading spinner, keep old records visible.
-    if(records.length===0){
+    if(rawRecords.length===0){
       setLoading(true);
     }else{
       setBgLoading(true);
@@ -2343,7 +2402,7 @@ function Dashboard({onBack}){
       if(r.ok){
         const recs=r.records||[];
         console.log('[Dashboard] Fetched',recs.length,'records. debug:',r.debug||'ok');
-        setRecords(recs);
+        setRawRecords(recs);
         setLastSync(new Date());
         if(recs.length===0){
           // Fetch succeeded but no records — show actionable message
