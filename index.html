@@ -78,7 +78,7 @@ if(window.Chart&&window.ChartDataLabels)window.Chart.register(window.ChartDataLa
 // ════════════════════════════════════════════════════════
 //  ⚙  CONFIG
 // ════════════════════════════════════════════════════════
-const SHEET_URL='https://script.google.com/macros/s/AKfycbxKBUVPjN_10P9TQcsTrzJ5x-LCgh1pBwVUtES7Z2o2hD5pZb7Udeig-80-9BQK4dCf/exec';
+const SHEET_URL='https://script.google.com/macros/s/AKfycbww2JR2vreza8wm0qW48_u3u6uy6RKyCkZrR92kRyat1qvUDm_GC5Aw9mqnzdZxoOhA/exec';
 const CL_CLOUD ='YOUR_CLOUDINARY_CLOUD_NAME';
 const CL_PRESET='YOUR_UNSIGNED_UPLOAD_PRESET';
 
@@ -328,18 +328,61 @@ const CACHE_TTL=60000;// 60 s
 
 // ── JSONP transport (bypasses CORS for GET) ──
 // Bug-fix: _t is added only ONCE (in the appended query, not in the original URL)
-// JSONP — 30s timeout + 1 automatic retry for mobile networks
+// JSONP with XMLHttpRequest fallback for mobile browsers that block script injection
 function _jsonp(url,_r=false){
   return new Promise((res,rej)=>{
     const cb='_gs_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);
     const tag=document.createElement('script');
-    const t=setTimeout(()=>{cleanup();if(!_r){console.warn('[JSONP] timeout, retrying...');_jsonp(url,true).then(res).catch(rej);}else{rej(new Error('Connection timed out. Verify: 1) Apps Script URL correct, 2) Deployed as Execute as Me / Access Anyone, 3) Internet connection active.'));}},30000);
-    const cleanup=()=>{clearTimeout(t);try{delete window[cb];}catch(_){}tag.parentNode?.removeChild(tag);};
+    const TIMEOUT=25000;
+    let done=false;
+    const cleanup=()=>{
+      if(done)return;done=true;
+      clearTimeout(t);
+      try{delete window[cb];}catch(_){}
+      if(tag.parentNode)tag.parentNode.removeChild(tag);
+    };
     window[cb]=data=>{cleanup();res(data);};
+    const t=setTimeout(()=>{
+      cleanup();
+      if(!_r){console.warn('[JSONP] timeout, retrying with XHR...');_jsonpXHR(url).then(res).catch(()=>rej(new Error('Connection timed out. Check: 1) Internet connection, 2) Apps Script deployed with Access: Anyone, 3) Try again.')));}
+      else{rej(new Error('Connection timed out. Check internet connection and Apps Script deployment.'));}
+    },TIMEOUT);
     const sep=url.includes('?')?'&':'?';
     tag.src=url+sep+'callback='+cb+'&_cb='+Date.now();
-    tag.onerror=()=>{cleanup();if(!_r){setTimeout(()=>_jsonp(url,true).then(res).catch(rej),1500);}else{rej(new Error('Cannot reach Apps Script. Check URL and deployment settings.'));}};
+    tag.onerror=()=>{
+      cleanup();
+      // On script load error, try XHR (works on many mobile browsers)
+      _jsonpXHR(url).then(res).catch(()=>{
+        if(!_r){setTimeout(()=>_jsonp(url,true).then(res).catch(rej),1000);}
+        else{rej(new Error('Cannot reach Apps Script. Please check your internet connection and Apps Script deployment settings.'));}
+      });
+    };
     document.head.appendChild(tag);
+  });
+}
+
+// XHR fallback for mobile — uses XMLHttpRequest which handles redirects better
+function _jsonpXHR(url){
+  return new Promise((res,rej)=>{
+    const cb='_xhr_'+Date.now().toString(36);
+    const sep=url.includes('?')?'&':'?';
+    const fullUrl=url+sep+'callback='+cb+'&_cb='+Date.now();
+    const xhr=new XMLHttpRequest();
+    xhr.open('GET',fullUrl,true);
+    xhr.timeout=20000;
+    xhr.onload=()=>{
+      if(xhr.status===200){
+        try{
+          // Response is: cb({...}) — extract the JSON
+          const text=xhr.responseText.trim();
+          const jsonStr=text.replace(/^[^(]+\((.*)\);?$/s,'$1');
+          res(JSON.parse(jsonStr));
+        }catch(e){rej(new Error('Parse error: '+e.message));}
+      }else{rej(new Error('HTTP '+xhr.status));}
+    };
+    xhr.onerror=()=>rej(new Error('XHR network error'));
+    xhr.ontimeout=()=>rej(new Error('XHR timeout'));
+    xhr.send();
   });
 }
 
@@ -1778,7 +1821,7 @@ table.main tbody tr:hover{background:#f8fafc}
 </table>
 
 <div class="section-title" style="page-break-before:always">C. SNAP COLLATED — EVIDENCE MEDIA</div>
-${((allMediaWithFlat&&allMediaWithFlat.length>0&&snapSections)?snapSections.filter(Boolean).join(''):'')||'<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>'}
+${(allMediaWithFlat&&allMediaWithFlat.length>0?snapSections:'')||'<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>'}
 
 <div class="section-title">D. FULL CHECKLIST RESPONSES</div>
 ${checklistSections||''}
