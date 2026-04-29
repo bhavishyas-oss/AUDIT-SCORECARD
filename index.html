@@ -78,7 +78,7 @@ if(window.Chart&&window.ChartDataLabels)window.Chart.register(window.ChartDataLa
 // ════════════════════════════════════════════════════════
 //  ⚙  CONFIG
 // ════════════════════════════════════════════════════════
-const SHEET_URL='https://script.google.com/macros/s/AKfycbyq34CBCizWqRBKpM-Ql5pRjuygwcZSC4VwSdelP27aIf9av-XmJNwVql2SwHw_g6WK/exec';
+const SHEET_URL='https://script.google.com/macros/s/AKfycbxKBUVPjN_10P9TQcsTrzJ5x-LCgh1pBwVUtES7Z2o2hD5pZb7Udeig-80-9BQK4dCf/exec';
 const CL_CLOUD ='YOUR_CLOUDINARY_CLOUD_NAME';
 const CL_PRESET='YOUR_UNSIGNED_UPLOAD_PRESET';
 
@@ -248,7 +248,22 @@ async function postToSheet(payload){
 // ── Login via credential sheet ──
 async function doLogin(uid,pwd){
   if(!sheetOK())return{ok:false,error:'Apps Script URL not configured.'};
-  return _jsonp(`${SHEET_URL}?action=login&uid=${encodeURIComponent(uid)}&pwd=${encodeURIComponent(pwd)}`);
+  // Try JSONP first, fall back to POST if blocked (mobile WebViews)
+  try{
+    return await _jsonp(SHEET_URL+'?action=login&uid='+encodeURIComponent(uid)+'&pwd='+encodeURIComponent(pwd));
+  }catch(e1){
+    console.warn('[doLogin] JSONP failed:',e1.message,'. Trying POST fallback...');
+    try{
+      // POST fallback — send credentials in body, Apps Script reads from postData
+      await fetch(SHEET_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({action:'login',uid,pwd})});
+      // no-cors response is opaque — re-try with JSONP once more after a short delay
+      await new Promise(r=>setTimeout(r,1000));
+      return await _jsonp(SHEET_URL+'?action=login&uid='+encodeURIComponent(uid)+'&pwd='+encodeURIComponent(pwd));
+    }catch(e2){
+      console.error('[doLogin] Both methods failed:',e2.message);
+      return{ok:false,error:'Cannot reach Apps Script. Please check: 1) Internet connection, 2) Apps Script is deployed with Access: Anyone, 3) Try again.'};
+    }
+  }
 }
 
 // ── Fetch existing record for resume ──
@@ -1763,10 +1778,10 @@ table.main tbody tr:hover{background:#f8fafc}
 </table>
 
 <div class="section-title" style="page-break-before:always">C. SNAP COLLATED — EVIDENCE MEDIA</div>
-${(allMediaWithFlat.length>0?snapSections.join(''):'') || '<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>'}
+${((allMediaWithFlat&&allMediaWithFlat.length>0&&snapSections)?snapSections.filter(Boolean).join(''):'')||'<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>'}
 
 <div class="section-title">D. FULL CHECKLIST RESPONSES</div>
-${checklistSections}
+${checklistSections||''}
 
 <div class="footer">
   Shadowfax Logistics Operations · Weekly Audit Scorecard · ${site} · ${fmtW(week)} · ${new Date().toLocaleDateString('en-IN')}
@@ -1927,7 +1942,10 @@ function DCDetailTab({records,week,site,setSite}){
           ${['performance','improvement','snaps','checklist'].map(v=>html`<button key=${v} class=${'sub-btn'+(sub===v?' act':'')} onClick=${()=>setSub(v)}>${v==='performance'?'📊 PERFORMANCE':v==='improvement'?'⚠ IMPROVEMENT AREAS':v==='snaps'?'📸 SNAP COLLATED':'☑ CHECKLIST'}</button>`)}
         </div>
         <button
-          onClick=${()=>generateDCReport(site,week,rec,answers,areaScores,fails,allMedia)}
+          onClick=${()=>{
+            try{generateDCReport(site,week,rec,answers,areaScores,fails,allMedia);}
+            catch(e){console.error('[generateDCReport]',e);alert('Report generation failed: '+e.message+'\nPlease try again or check console for details.');}
+          }}
           style=${{background:'linear-gradient(135deg,#1C856F,#059669)',color:'#fff',border:'none',borderRadius:8,padding:'10px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:.6,boxShadow:'0 4px 16px rgba(28,133,111,.35)',flexShrink:0,transition:'all .2s'}}
           onMouseEnter=${e=>{e.currentTarget.style.transform='translateY(-1px)';e.currentTarget.style.boxShadow='0 6px 20px rgba(28,133,111,.5)';}}
           onMouseLeave=${e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 4px 16px rgba(28,133,111,.35)';}}>
