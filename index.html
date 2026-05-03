@@ -1527,7 +1527,7 @@ ${dc.areas.filter(a=>a.fails.length>0).map(a=>`<div class="area-row">
 ${a.fails.map(f=>`<div class="fail-item"><div style="flex:1">
 <div class="fail-sentence">⚠ ${f.q}${f.remark?` <span class="remark-inline">(Remark: ${f.remark})</span>`:''}</div>
 ${(f.imgs.length>0||f.vids.length>0)?`<div class="media-row">
-${f.imgs.map(u=>`<img class="media-img" src="${u}" loading="lazy" alt="evidence"/>`).join('')}
+${f.imgs.map(u=>{const id=(u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/d\/([a-zA-Z0-9_-]+)/)||u.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/))?.[1];const href=id?'https://drive.google.com/file/d/'+id+'/view':u;return`<a href="${href}" target="_blank" rel="noopener" title="Click to open full size"><img class="media-img" src="${u}" loading="lazy" alt="evidence" style="cursor:pointer" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'" onerror="if(id&&!this.dataset.r){this.dataset.r=1;this.src='https://drive.google.com/uc?id='+id+'&export=view';}else{this.parentElement.innerHTML='<a href=\"'+href+'\">&#128247; View</a>';}"/></a>`;}).join('')}
 ${f.vids.map((u,vi)=>{const resolved=u.includes('drive.google.com')?u.replace('/view','/preview').replace('/open','/preview'):(u.startsWith('http')?u:'');return resolved?`<a class="media-vid" href="${resolved}" target="_blank" title="Open video">🎥<span style="font-size:9px">VIDEO ${vi+1}</span></a>`:'';}).join('')}
 </div>`:''}
 </div></div>`).join('')}
@@ -1678,8 +1678,8 @@ function OverviewTab({records,week}){
 // ════════════════════════════════════════════════════════
 function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
   const score=Number(rec?.['Overall_Score_%'])||0;
-  const auditor=String(rec?.['Auditor']||'—');
-  const date=String(rec?.['Audit_Date']||'—');
+  const auditor=String(rec?.['Auditor']||'Not provided');
+  const date=String(rec?.['Audit_Date']||'Not provided');
   const passC=Number(rec?.['Pass_Count'])||0;
   const failC=Number(rec?.['Fail_Count'])||0;
   const naC=Number(rec?.['NA_Count'])||0;
@@ -1687,162 +1687,179 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
   const scFg=v=>v>=80?'#065f46':v>=60?'#92400e':'#991b1b';
   const scTxt=v=>v>=80?'GOOD':v>=60?'MONITOR':'ACTION NEEDED';
 
-  // Build area score rows
+  // Convert any Drive URL to both a display src and a clickable href
+  const toDriveId=u=>{
+    if(!u)return null;
+    const m=u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/d\/([a-zA-Z0-9_-]+)/)||u.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+    return m?m[1]:null;
+  };
+  const imgSrcUrl=u=>{const id=toDriveId(u);return id?'https://lh3.googleusercontent.com/d/'+id:u;};
+  const imgHrefUrl=u=>{const id=toDriveId(u);return id?'https://drive.google.com/file/d/'+id+'/view':u;};
+
+  // Helper: render a clickable image thumbnail with zoom
+  const imgHtml=(u,w,h)=>{
+    const src=imgSrcUrl(u);
+    const href=imgHrefUrl(u);
+    return '<a href="'+href+'" target="_blank" rel="noopener" style="display:inline-block;cursor:pointer;margin:3px;text-decoration:none" title="Click to open full size">'+
+      '<img src="'+src+'" '+
+      'style="width:'+w+'px;height:'+h+'px;object-fit:cover;border-radius:5px;border:2px solid #e2e8f0;display:block;transition:transform .2s" '+
+      'onmouseover="this.style.transform=\'scale(1.05)\';this.style.borderColor=\'#1C856F\'" '+
+      'onmouseout="this.style.transform=\'scale(1)\';this.style.borderColor=\'#e2e8f0\'" '+
+      'onerror="const id=this.src.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1];if(id&&!this.dataset.r){this.dataset.r=1;this.src=\'https://drive.google.com/uc?id=\'+id+\'&export=view\';}else if(!this.dataset.r2){this.dataset.r2=1;this.src=\'https://drive.google.com/thumbnail?id=\'+id+\'&sz=w400\';}else{this.parentElement.innerHTML=\'<a href=\\\"\'+this.parentElement.href+\'\\\">&#128247; View Image</a>\';}" '+
+      '/></a>';
+  };
+
+  // Area rows
   const areaRows=AREAS.map(area=>{
     const s=Number(rec?.[ACOL[area]])||0;
-    return `<tr><td>${area}</td><td style="background:${scBg(s)};color:${scFg(s)};font-weight:700;text-align:center">${s}%</td><td style="text-align:center;color:${scFg(s)}">${scTxt(s)}</td></tr>`;
+    return '<tr><td>'+area+'</td><td style="background:'+scBg(s)+';color:'+scFg(s)+';font-weight:700;text-align:center">'+
+      (s>0?s+'%':'Not filled')+'</td><td style="text-align:center;color:'+scFg(s)+'">'+
+      (s>0?scTxt(s):'—')+'</td></tr>';
   }).join('');
 
-  // Build improvement areas
+  // Improvement areas with clickable images
   const improvementRows=fails.length===0
-    ?'<tr><td colspan="3" style="text-align:center;color:#16a34a;padding:18px">✓ No failures — excellent performance!</td></tr>'
+    ?'<tr><td colspan="3" style="text-align:center;color:#16a34a;padding:18px">&#10003; No failures — excellent performance!</td></tr>'
     :fails.map(f=>{
-      const mediaHtml=f.imgs.map(u=>`<img src="${u}" style="width:60px;height:50px;object-fit:cover;border-radius:4px;margin:2px;border:1px solid #e2e8f0" loading="lazy" onerror="this.style.display='none'"/>`).join('')
-        +f.vids.map(u=>`<a href="${u}" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;width:60px;height:50px;background:#0f172a;border:1px solid #1e40af;border-radius:4px;color:#60a5fa;font-size:9px;text-decoration:none;margin:2px">🎥 PLAY</a>`).join('');
-      return `<tr>
-        <td style="color:#991b1b;font-weight:600">${f.q||f.neg||'—'}</td>
-        <td style="color:#64748b;font-size:10px">${f.area}</td>
-        <td style="color:#92400e;font-style:italic">${f.remark||'—'}</td>
-        <td style="min-width:80px">${mediaHtml}</td>
-      </tr>`;}).join('');
+      const media=
+        f.imgs.map(u=>imgHtml(u,80,60)).join('')+
+        f.vids.map(u=>'<a href="'+u+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;width:80px;height:60px;background:#0f172a;border:2px solid #1e40af;border-radius:5px;color:#60a5fa;font-size:10px;text-decoration:none;margin:3px;flex-direction:column;gap:2px">&#9654;<span style="font-size:8px">PLAY</span></a>').join('');
+      return '<tr>'+
+        '<td style="color:#991b1b;font-weight:600;line-height:1.5">'+(f.q||'—')+'<br><span style="color:#64748b;font-weight:400;font-size:10px">'+f.area+'</span>'+
+        (f.remark?'<br><span style="color:#92400e;font-style:italic;font-size:10px">&#8627; '+f.remark+'</span>':'')+'</td>'+
+        '<td style="padding:6px">'+(media||'<span style="color:#94a3b8;font-size:10px">No media</span>')+'</td></tr>';
+    }).join('');
 
-  // Build snap collated — also include flat column media as fallback
-  // Merge per-question media (allMedia) with flat column URLs (rec['Image_URLs'], rec['Video_URLs'])
+  // Build flat media list (from allMedia + flat columns)
   const flatImgURLs=String(rec?.['Image_URLs']||'').split('\n').filter(u=>u&&u.startsWith('http'));
   const flatVidURLs=String(rec?.['Video_URLs']||'').split('\n').filter(u=>u&&u.startsWith('http'));
   const allMediaWithFlat=[...allMedia,
-    ...flatImgURLs.filter(u=>!allMedia.some(m=>m.src===driveImgSrc(u))).map(u=>({type:'image',src:driveImgSrc(u),area:'EVIDENCE',q:'Uploaded Evidence'})),
+    ...flatImgURLs.filter(u=>!allMedia.some(m=>m.src===imgSrcUrl(u))).map(u=>({type:'image',src:imgSrcUrl(u),_href:imgHrefUrl(u),area:'EVIDENCE',q:'Uploaded Evidence'})),
     ...flatVidURLs.filter(u=>!allMedia.some(m=>m.url===u)).map(u=>({type:'video',url:u,area:'EVIDENCE',q:'Uploaded Evidence'}))
   ];
+
+  // Snap collated — each area with clickable images + video links
   const snapSections=[...AREAS,'EVIDENCE'].map(area=>{
     const aMedia=allMediaWithFlat.filter(m=>m.area===area);
     if(!aMedia.length)return'';
-    const imgs=aMedia.filter(m=>m.type==='image').map(m=>
-      `<img src="${m.src}" style="width:150px;height:110px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0" loading="lazy" onerror="this.style.display='none'"/>`
-    ).join('');
+    const imgs=aMedia.filter(m=>m.type==='image').map(m=>imgHtml(m.src,150,110)).join('');
     const vids=aMedia.filter(m=>m.type==='video').map(m=>{
       const r=resolveVideoUrl(m.url||m.src);
-      if(!r)return'';
-      const href=r.type==='drive'?r.view:(r.src||m.url||m.src);
-      return `<a href="${href}" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;width:150px;height:110px;background:#0f172a;border:1px solid #1e40af;border-radius:6px;color:#60a5fa;text-decoration:none;font-size:24px">🎥<span style="font-size:9px;font-family:monospace">VIEW VIDEO</span></a>`;
+      const href=r?r.view:(m.url||m.src);
+      return '<a href="'+href+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;width:150px;height:110px;background:#0f172a;border:2px solid #1e40af;border-radius:6px;color:#60a5fa;text-decoration:none;font-size:28px;margin:3px">&#9654;<span style="font-size:9px;font-family:monospace">VIEW VIDEO</span></a>';
     }).join('');
     if(!imgs&&!vids)return'';
-    return `<div style="margin-bottom:18px">
-      <div style="font-weight:700;font-size:11px;color:#1C856F;padding:5px 10px;background:#f0fdf4;border-left:3px solid #1C856F;margin-bottom:10px">${area}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">${imgs}${vids}</div>
-    </div>`;
+    return '<div style="margin-bottom:18px">'+
+      '<div style="font-weight:700;font-size:11px;color:#1C856F;padding:5px 10px;background:#f0fdf4;border-left:3px solid #1C856F;margin-bottom:10px">'+area+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:4px">'+imgs+vids+'</div></div>';
   }).join('');
 
-  // Build full checklist
+  // Full checklist
   const checklistSections=AREAS.map(area=>{
     const qs=answers[area]||{};
     const rows=(QS[area]||[]).map(q=>{
       const a=qs[q]||{};
       const ansColor=a.answer==='PASS'?'#16a34a':a.answer==='FAIL'?'#dc2626':'#64748b';
       const rowBg=a.answer==='FAIL'?'#fff1f2':'transparent';
-      return `<tr style="background:${rowBg}">
-        <td style="font-size:11px;line-height:1.5;color:${a.answer==='FAIL'?'#991b1b':'#1e293b'}">${q}</td>
-        <td style="text-align:center;font-weight:700;color:${ansColor};white-space:nowrap;font-family:monospace">${a.answer||'—'}</td>
-        <td style="font-size:10px;color:#64748b;font-style:italic">${a.remark||''}</td>
-      </tr>`;
+      const qImgs=(a.imageURLs||[]).filter(u=>u&&u.startsWith('http'));
+      const qVids=(a.videoURLs||[]).filter(u=>u&&u.startsWith('http'));
+      const qMedia=qImgs.map(u=>imgHtml(u,60,50)).join('')+
+        qVids.map(u=>'<a href="'+imgHrefUrl(u)+'" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;width:60px;height:50px;background:#0f172a;border:1px solid #1e40af;border-radius:4px;color:#60a5fa;font-size:10px;text-decoration:none">&#9654;</a>').join('');
+      return '<tr style="background:'+rowBg+'">'+
+        '<td style="font-size:11px;line-height:1.5;color:'+(a.answer==='FAIL'?'#991b1b':'#1e293b')+'">'+q+'</td>'+
+        '<td style="text-align:center;font-weight:700;color:'+ansColor+';white-space:nowrap;font-family:monospace">'+(a.answer||'—')+'</td>'+
+        '<td style="font-size:10px;color:#64748b;font-style:italic">'+(a.remark||'')+'</td>'+
+        '<td style="padding:4px">'+(qMedia||'')+'</td></tr>';
     }).join('');
-    return`<div style="margin-bottom:20px;page-break-inside:avoid">
-      <div style="font-weight:700;font-size:11px;color:#1C856F;padding:6px 12px;background:#f0fdf4;border-left:4px solid #1C856F;margin-bottom:8px">${area}</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:#f8fafc">
-          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b">QUESTION</th>
-          <th style="text-align:center;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b;width:80px">RESULT</th>
-          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b">REMARK</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+    return '<div style="margin-bottom:20px;page-break-inside:avoid">'+
+      '<div style="font-weight:700;font-size:11px;color:#1C856F;padding:6px 12px;background:#f0fdf4;border-left:4px solid #1C856F;margin-bottom:8px">'+area+'</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<thead><tr style="background:#f8fafc">'+
+      '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b">QUESTION</th>'+
+      '<th style="text-align:center;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b;width:70px">RESULT</th>'+
+      '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b">REMARK</th>'+
+      '<th style="padding:6px 10px;border-bottom:2px solid #e2e8f0;font-size:10px;color:#64748b;width:80px">MEDIA</th>'+
+      '</tr></thead><tbody>'+rows+'</tbody></table></div>';
   }).join('');
 
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>Shadowfax Audit Report — ${site} ${fmtW(week)}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,Helvetica,sans-serif;font-size:12px;background:#fff;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.wrap{max-width:1050px;margin:0 auto;padding:28px 32px}
-.header{background:linear-gradient(135deg,#0f4235,#1C856F);color:#fff;padding:24px 30px;border-radius:10px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;gap:16px}
-.header h1{font-size:22px;font-weight:800;margin-bottom:4px}
-.header .sub{color:rgba(255,255,255,.75);font-size:11px;line-height:1.8}
-.score-badge{background:#fff;border-radius:10px;padding:14px 20px;text-align:center;min-width:120px;flex-shrink:0}
-.score-badge .pct{font-size:40px;font-weight:900;color:${scFg(score)};line-height:1}
-.score-badge .lbl{font-size:9px;font-family:monospace;letter-spacing:1.5px;color:#64748b;margin-top:4px}
-.meta-grid{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
-.meta-chip{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 14px;font-size:11px}
-.meta-chip b{display:block;color:#64748b;font-size:9px;letter-spacing:1px;margin-bottom:2px}
-.stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
-.stat-box{flex:1;min-width:100px;border-radius:8px;padding:12px 16px;text-align:center;border:1px solid}
-.section-title{font-size:13px;font-weight:700;color:#1C856F;border-left:4px solid #1C856F;padding:6px 14px;background:#f0fdf4;border-radius:0 5px 5px 0;margin:24px 0 12px}
-table.main{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px}
-table.main th{background:#1C856F;color:#fff;padding:7px 12px;text-align:left;font-size:10px;letter-spacing:.5px}
-table.main td{border:1px solid #e2e8f0;padding:7px 12px;vertical-align:top}
-table.main tbody tr:hover{background:#f8fafc}
-.footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;text-align:center;color:#94a3b8;font-size:10px}
-@media print{.no-print{display:none!important}.wrap{padding:14px}@page{margin:1cm}}
-</style></head><body><div class="wrap">
+  const html='<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>Shadowfax Audit Report — '+site+' '+fmtW(week)+'</title>'+
+    '<style>'+
+    '*{box-sizing:border-box;margin:0;padding:0}'+
+    'body{font-family:Arial,Helvetica,sans-serif;font-size:12px;background:#fff;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+    '.wrap{max-width:1050px;margin:0 auto;padding:28px 32px}'+
+    '.header{background:linear-gradient(135deg,#0f4235,#1C856F);color:#fff;padding:24px 30px;border-radius:10px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;gap:16px}'+
+    '.header h1{font-size:22px;font-weight:800;margin-bottom:4px}'+
+    '.header .sub{color:rgba(255,255,255,.75);font-size:11px;line-height:1.8}'+
+    '.score-badge{background:#fff;border-radius:10px;padding:14px 20px;text-align:center;min-width:120px;flex-shrink:0}'+
+    '.score-badge .pct{font-size:40px;font-weight:900;line-height:1}'+
+    '.score-badge .lbl{font-size:9px;font-family:monospace;letter-spacing:1.5px;color:#64748b;margin-top:4px}'+
+    '.meta-grid{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}'+
+    '.meta-chip{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 14px;font-size:11px}'+
+    '.meta-chip b{display:block;color:#64748b;font-size:9px;letter-spacing:1px;margin-bottom:2px}'+
+    '.section-title{font-size:13px;font-weight:700;color:#1C856F;border-left:4px solid #1C856F;padding:6px 14px;background:#f0fdf4;border-radius:0 5px 5px 0;margin:24px 0 12px}'+
+    'table.main{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px}'+
+    'table.main th{background:#1C856F;color:#fff;padding:7px 12px;text-align:left;font-size:10px;letter-spacing:.5px}'+
+    'table.main td{border:1px solid #e2e8f0;padding:7px 12px;vertical-align:middle}'+
+    'table.main tbody tr:hover{background:#f8fafc}'+
+    'a img{cursor:pointer}'+
+    '.footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;text-align:center;color:#94a3b8;font-size:10px}'+
+    '@media print{.no-print{display:none!important}.wrap{padding:14px}@page{margin:1cm}}'+
+    '@media(max-width:600px){.header{flex-direction:column}.score-badge{min-width:auto}}'+
+    '</style></head><body><div class="wrap">'+
 
-<div class="header">
-  <div>
-    <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.6);margin-bottom:4px">SHADOWFAX LOGISTICS — WEEKLY AUDIT</div>
-    <h1>📋 ${site}</h1>
-    <div class="sub">
-      Week ${fmtW(week)} &nbsp;|&nbsp; Date: ${date} &nbsp;|&nbsp; Auditor: ${auditor}<br/>
-      Generated: ${new Date().toLocaleString('en-IN')}
-    </div>
-  </div>
-  <div class="score-badge">
-    <div class="pct" style="color:${scFg(score)}">${score}%</div>
-    <div class="lbl">OVERALL SCORE</div>
-    <div style="font-size:10px;font-weight:700;color:${scFg(score)};margin-top:4px">${scTxt(score)}</div>
-  </div>
-</div>
+    '<div class="header">'+
+    '<div>'+
+    '<div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.6);margin-bottom:4px">SHADOWFAX LOGISTICS — WEEKLY AUDIT</div>'+
+    '<h1>'+site+'</h1>'+
+    '<div class="sub">'+
+    'Week '+fmtW(week)+' &nbsp;|&nbsp; Date: '+date+' &nbsp;|&nbsp; Auditor: '+auditor+'<br/>'+
+    'Generated: '+new Date().toLocaleString('en-IN')+
+    '</div></div>'+
+    '<div class="score-badge">'+
+    '<div class="pct" style="color:'+scFg(score)+'">'+score+'%</div>'+
+    '<div class="lbl">OVERALL SCORE</div>'+
+    '<div style="font-size:10px;font-weight:700;color:'+scFg(score)+';margin-top:4px">'+scTxt(score)+'</div>'+
+    '</div></div>'+
 
-<div class="meta-grid">
-  <div class="meta-chip"><b>PASS</b><span style="color:#16a34a;font-weight:700;font-size:14px">${passC}</span></div>
-  <div class="meta-chip"><b>FAIL</b><span style="color:#dc2626;font-weight:700;font-size:14px">${failC}</span></div>
-  <div class="meta-chip"><b>N/A</b><span style="color:#64748b;font-weight:700;font-size:14px">${naC}</span></div>
-  <div class="meta-chip"><b>COMPLIANCE</b><span style="font-weight:700;font-size:14px;color:${scFg(score)}">${score}%</span></div>
-</div>
+    '<div class="meta-grid">'+
+    '<div class="meta-chip"><b>PASS</b><span style="color:#16a34a;font-weight:700;font-size:14px">'+passC+'</span></div>'+
+    '<div class="meta-chip"><b>FAIL</b><span style="color:#dc2626;font-weight:700;font-size:14px">'+failC+'</span></div>'+
+    '<div class="meta-chip"><b>N/A</b><span style="color:#64748b;font-weight:700;font-size:14px">'+naC+'</span></div>'+
+    '<div class="meta-chip"><b>COMPLIANCE</b><span style="font-weight:700;font-size:14px;color:'+scFg(score)+'">'+score+'%</span></div>'+
+    '</div>'+
 
-<div class="section-title">A. AREA-WISE PERFORMANCE</div>
-<table class="main">
-  <thead><tr><th>OPERATIONAL AREA</th><th style="width:100px;text-align:center">SCORE</th><th style="width:140px;text-align:center">STATUS</th></tr></thead>
-  <tbody>${areaRows}</tbody>
-</table>
+    '<div class="section-title">A. AREA-WISE PERFORMANCE</div>'+
+    '<table class="main"><thead><tr><th>OPERATIONAL AREA</th><th style="width:110px;text-align:center">SCORE</th><th style="width:150px;text-align:center">STATUS</th></tr></thead>'+
+    '<tbody>'+areaRows+'</tbody></table>'+
 
-<div class="section-title">B. IMPROVEMENT AREAS (${fails.length} issue${fails.length!==1?'s':''})</div>
-<table class="main">
-  <thead><tr><th>IDENTIFIED ISSUE</th><th style="width:160px">AREA</th><th style="width:180px">REMARK</th><th style="width:100px">MEDIA</th></tr></thead>
-  <tbody>${improvementRows}</tbody>
-</table>
+    '<div class="section-title">B. IMPROVEMENT AREAS ('+fails.length+' issue'+(fails.length!==1?'s':'')+')</div>'+
+    '<table class="main"><thead><tr>'+
+    '<th>IDENTIFIED ISSUE / AREA / REMARK</th>'+
+    '<th style="width:200px">EVIDENCE MEDIA</th></tr></thead>'+
+    '<tbody>'+improvementRows+'</tbody></table>'+
 
-<div class="section-title" style="page-break-before:always">C. SNAP COLLATED — EVIDENCE MEDIA</div>
-${(allMediaWithFlat&&allMediaWithFlat.length>0?snapSections:'')||'<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>'}
+    '<div class="section-title" style="page-break-before:always">C. SNAP COLLATED — EVIDENCE MEDIA</div>'+
+    (allMediaWithFlat.length>0?snapSections:'<p style="color:#64748b;padding:12px 0;font-style:italic">No media uploaded for this submission.</p>')+
 
-<div class="section-title">D. FULL CHECKLIST RESPONSES</div>
-${checklistSections||''}
+    '<div class="section-title">D. FULL CHECKLIST RESPONSES</div>'+
+    (checklistSections||'')+
 
-<div class="footer">
-  Shadowfax Logistics Operations · Weekly Audit Scorecard · ${site} · ${fmtW(week)} · ${new Date().toLocaleDateString('en-IN')}
-</div>
-</div>
-<div class="no-print" style="position:fixed;bottom:20px;right:20px;display:flex;gap:10px">
-  <button onclick="window.print()" style="background:#1C856F;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(28,133,111,.4)">🖨 PRINT / SAVE AS PDF</button>
-  <button onclick="window.close()" style="background:#64748b;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:14px;cursor:pointer">✕ CLOSE</button>
-</div>
-</body></html>`;
+    '<div class="footer">'+
+    'Shadowfax Logistics Operations &middot; Weekly Audit Scorecard &middot; '+site+' &middot; '+fmtW(week)+' &middot; '+new Date().toLocaleDateString('en-IN')+
+    '</div></div>'+
 
-  // Use Blob URL — never blocked by popup blockers or CSP
-  // Revoke after 60 s to free memory
+    '<div class="no-print" style="position:fixed;bottom:20px;right:20px;display:flex;gap:10px;z-index:999">'+
+    '<button onclick="window.print()" style="background:#1C856F;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(28,133,111,.4)">&#128424; PRINT / SAVE AS PDF</button>'+
+    '<button onclick="window.close()" style="background:#64748b;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:14px;cursor:pointer">&#x2715; CLOSE</button>'+
+    '</div>'+
+    '</body></html>';
+
   const blob=new Blob([html],{type:'text/html;charset=utf-8'});
   const blobUrl=URL.createObjectURL(blob);
   const w=window.open(blobUrl,'_blank','noopener,noreferrer');
   if(!w){
-    // Fallback: trigger a direct file download instead of opening in new tab
     const a=document.createElement('a');
     a.href=blobUrl;
     a.download='Audit_Report_'+site.replace(/\s+/g,'_')+'_'+fmtW(week)+'_'+new Date().toISOString().slice(0,10)+'.html';
@@ -1851,9 +1868,7 @@ ${checklistSections||''}
   setTimeout(()=>URL.revokeObjectURL(blobUrl),60000);
 }
 
-// ════════════════════════════════════════════════════════
-//  TAB 2: DC DETAIL VIEW
-// ════════════════════════════════════════════════════════
+
 function DCDetailTab({records,week,site,setSite}){
   const[sub,setSub]=useState('performance');const[lb,setLb]=useState(null);
   const[selDate,setSelDate]=useState('');
