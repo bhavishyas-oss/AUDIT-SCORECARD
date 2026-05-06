@@ -1697,15 +1697,19 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
   const imgHrefUrl=u=>{const id=toDriveId(u);return id?'https://drive.google.com/file/d/'+id+'/view':u;};
 
   // Helper: render a clickable image thumbnail with zoom
-  const imgHtml=(u,w,h)=>{
+  const imgHtml=(u,w,h,useClass)=>{
     const src=imgSrcUrl(u);
     const href=imgHrefUrl(u);
     const id=toDriveId(u);
     const fb1=id?'https://drive.google.com/uc?id='+id+'&export=view':href;
     const fb2=id?'https://drive.google.com/thumbnail?id='+id+'&sz=w400':href;
-    return '<a href="'+href+'" target="_blank" rel="noopener" style="display:inline-block;cursor:pointer;margin:3px;text-decoration:none" title="Click to open full size" data-f1="'+fb1+'" data-f2="'+fb2+'">'+
-      '<img src="'+src+'" style="width:'+w+'px;height:'+h+'px;object-fit:cover;border-radius:5px;border:2px solid #e2e8f0;display:block;cursor:pointer" '+
-      'onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'" '+
+    // useClass=true → use snap-item class (uniform grid); false → use inline w/h (for tables)
+    const wrapStyle=useClass?'':'display:inline-block;cursor:pointer;margin:3px;text-decoration:none;';
+    const imgStyle=useClass?'':'width:'+w+'px;height:'+h+'px;object-fit:cover;border-radius:5px;border:2px solid #e2e8f0;display:block;cursor:pointer;';
+    return '<a href="'+href+'" target="_blank" rel="noopener" '+(useClass?'class="snap-item"':'')+
+      ' style="'+wrapStyle+'" title="Click to open full size" data-f1="'+fb1+'" data-f2="'+fb2+'">'+
+      '<img src="'+src+'" '+(useClass?'':'style="'+imgStyle+'"')+
+      ' onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'" '+
       'onerror="var p=this.parentElement;if(!this.dataset.r){this.dataset.r=1;this.src=p.dataset.f1;}else if(!this.dataset.r2){this.dataset.r2=1;this.src=p.dataset.f2;}" '+
       '/></a>';
   }
@@ -1724,7 +1728,7 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
     :fails.map(f=>{
       const media=
         f.imgs.map(u=>imgHtml(u,80,60)).join('')+
-        f.vids.map(u=>'<a href="'+u+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;width:80px;height:60px;background:#0f172a;border:2px solid #1e40af;border-radius:5px;color:#60a5fa;font-size:10px;text-decoration:none;margin:3px;flex-direction:column;gap:2px">&#9654;<span style="font-size:8px">PLAY</span></a>').join('');
+        f.vids.map(u=>{const href=imgHrefUrl(u)||u;return '<a href="'+href+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;width:80px;height:60px;background:#0f172a;border:2px solid #1e40af;border-radius:5px;color:#60a5fa;text-decoration:none;margin:3px;flex-direction:column;gap:3px;cursor:pointer" title="Play video"><span style="font-size:20px;line-height:1">&#9654;</span><span style="font-size:8px;font-family:monospace">PLAY</span></a>';}).join('');
       return '<tr style="page-break-inside:avoid">'+
         '<td style="color:#991b1b;font-weight:600;line-height:1.5;padding:8px 10px">'+(f.q||'—')+'<br><span style="color:#64748b;font-weight:400;font-size:10px">'+f.area+'</span>'+
         (f.remark?'<br><span style="color:#92400e;font-style:italic;font-size:10px">&#8627; '+f.remark+'</span>':'')+'</td>'+
@@ -1743,11 +1747,13 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
   const snapSections=[...AREAS,'EVIDENCE'].map(area=>{
     const aMedia=allMediaWithFlat.filter(m=>m.area===area);
     if(!aMedia.length)return'';
-    const imgs=aMedia.filter(m=>m.type==='image').map(m=>imgHtml(m.src,150,110)).join('');
+    const imgs=aMedia.filter(m=>m.type==='image').map(m=>imgHtml(m.src,150,110,true)).join('');
     const vids=aMedia.filter(m=>m.type==='video').map(m=>{
       const r=resolveVideoUrl(m.url||m.src);
       const href=r?r.view:(m.url||m.src);
-      return '<a href="'+href+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;width:150px;height:110px;background:#0f172a;border:2px solid #1e40af;border-radius:6px;color:#60a5fa;text-decoration:none;font-size:28px;margin:3px">&#9654;<span style="font-size:9px;font-family:monospace">VIEW VIDEO</span></a>';
+      return '<a href="'+href+'" target="_blank" rel="noopener" class="snap-item-vid" title="Click to play video">'+
+        '<span style="font-size:40px;line-height:1">&#9654;</span>'+
+        '<span style="font-size:9px;font-family:monospace;letter-spacing:0.5px;opacity:0.8">PLAY VIDEO</span></a>';
     }).join('');
     if(!imgs&&!vids)return'';
     return '<div class="snap-area">'+
@@ -1765,7 +1771,7 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
       const qImgs=(a.imageURLs||[]).filter(u=>u&&u.startsWith('http'));
       const qVids=(a.videoURLs||[]).filter(u=>u&&u.startsWith('http'));
       const qMedia=qImgs.map(u=>imgHtml(u,60,50)).join('')+
-        qVids.map(u=>'<a href="'+imgHrefUrl(u)+'" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;width:60px;height:50px;background:#0f172a;border:1px solid #1e40af;border-radius:4px;color:#60a5fa;font-size:10px;text-decoration:none">&#9654;</a>').join('');
+        qVids.map(u=>{const href=imgHrefUrl(u);return '<a href="'+href+'" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;width:60px;height:50px;background:#0f172a;border:2px solid #1e40af;border-radius:5px;color:#60a5fa;font-size:16px;text-decoration:none;cursor:pointer" title="Play video">&#9654;<span style="font-size:7px;font-family:monospace">PLAY</span></a>';}).join('');
       return '<tr class="'+(a.answer==='FAIL'?'fail-row':'')+'" style="color:'+(a.answer==='FAIL'?'#991b1b':'#1e293b')+'">'+
         '<td style="line-height:1.5">'+q+'</td>'+
         '<td style="text-align:center;font-weight:700;color:'+ansColor+';white-space:nowrap;font-family:monospace">'+(a.answer||'—')+'</td>'+
@@ -1814,12 +1820,15 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
     '.cl-section-hdr{font-weight:700;font-size:11px;color:#1C856F;padding:5px 10px;background:#f0fdf4;border-left:4px solid #1C856F;margin-bottom:0;page-break-after:avoid}'+
     '.snap-area{margin-bottom:14px}'+
     '.snap-area-hdr{font-weight:700;font-size:11px;color:#1C856F;padding:4px 8px;background:#f0fdf4;border-left:3px solid #1C856F;margin-bottom:8px;page-break-after:avoid}'+
-    '.snap-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}'+
+    '.snap-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}'+
+    '.snap-item{display:inline-block;width:150px;height:110px;border-radius:6px;overflow:hidden;flex-shrink:0;position:relative;page-break-inside:avoid}'+
+    '.snap-item img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}'+
+    '.snap-item-vid{display:inline-flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;width:150px;height:110px;background:#0f172a;border:2px solid #1e40af;border-radius:6px;color:#60a5fa;text-decoration:none;font-size:32px;flex-shrink:0;page-break-inside:avoid;cursor:pointer}'+
     '.improv-row{padding:10px 0;border-bottom:1px solid #f1f5f9;page-break-inside:avoid}'+
     '.improv-row:last-child{border-bottom:none}'+
     'a img{cursor:pointer}'+
     '.footer{margin-top:28px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center;color:#94a3b8;font-size:10px}'+
-    '@media print{.no-print{display:none!important}.wrap{padding:12px 16px}@page{margin:.8cm}}'+
+    '@media print{.no-print{display:none!important}.wrap{padding:12px 16px}@page{margin:.8cm}.snap-grid{display:flex!important;flex-wrap:wrap!important;gap:6px!important}.snap-item,.snap-item-vid{page-break-inside:avoid!important;flex-shrink:0!important}.snap-item{width:140px!important;height:100px!important}.snap-item-vid{width:140px!important;height:100px!important}.cl-section{page-break-inside:auto!important}}'+
     '@media(max-width:600px){.header{flex-direction:column}.score-badge{min-width:auto}}'+
     '</style></head><body><div class="wrap">'+
 
