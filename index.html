@@ -1700,14 +1700,15 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
   const imgHtml=(u,w,h)=>{
     const src=imgSrcUrl(u);
     const href=imgHrefUrl(u);
-    return '<a href="'+href+'" target="_blank" rel="noopener" style="display:inline-block;cursor:pointer;margin:3px;text-decoration:none" title="Click to open full size">'+
-      '<img src="'+src+'" '+
-      'style="width:'+w+'px;height:'+h+'px;object-fit:cover;border-radius:5px;border:2px solid #e2e8f0;display:block;transition:transform .2s" '+
-      'onmouseover="this.style.transform=\'scale(1.05)\';this.style.borderColor=\'#1C856F\'" '+
-      'onmouseout="this.style.transform=\'scale(1)\';this.style.borderColor=\'#e2e8f0\'" '+
-      'onerror="const id=this.src.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1];if(id&&!this.dataset.r){this.dataset.r=1;this.src=\'https://drive.google.com/uc?id=\'+id+\'&export=view\';}else if(!this.dataset.r2){this.dataset.r2=1;this.src=\'https://drive.google.com/thumbnail?id=\'+id+\'&sz=w400\';}else{this.parentElement.innerHTML=\'<a href=\\\"\'+this.parentElement.href+\'\\\">&#128247; View Image</a>\';}" '+
+    const id=toDriveId(u);
+    const fb1=id?'https://drive.google.com/uc?id='+id+'&export=view':href;
+    const fb2=id?'https://drive.google.com/thumbnail?id='+id+'&sz=w400':href;
+    return '<a href="'+href+'" target="_blank" rel="noopener" style="display:inline-block;cursor:pointer;margin:3px;text-decoration:none" title="Click to open full size" data-f1="'+fb1+'" data-f2="'+fb2+'">'+
+      '<img src="'+src+'" style="width:'+w+'px;height:'+h+'px;object-fit:cover;border-radius:5px;border:2px solid #e2e8f0;display:block;cursor:pointer" '+
+      'onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'" '+
+      'onerror="var p=this.parentElement;if(!this.dataset.r){this.dataset.r=1;this.src=p.dataset.f1;}else if(!this.dataset.r2){this.dataset.r2=1;this.src=p.dataset.f2;}" '+
       '/></a>';
-  };
+  }
 
   // Area rows
   const areaRows=AREAS.map(area=>{
@@ -2292,14 +2293,33 @@ function DCFacilityTab({records,week}){
     const avgScore=Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
     const areaScores={};AREAS.forEach(area=>{const vals=siteRecs.map(r=>Number(r[ACOL[area]])||0);areaScores[area]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);});
     const latest=siteRecs[siteRecs.length-1];const ans=parseAns(latest);
-    const fails=[];AREAS.forEach(area=>Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL')fails.push({area,q,remark:a.remark||''});}));
-    const imgs=[];AREAS.forEach(area=>Object.values(ans[area]||{}).forEach(a=>{(a?.imageURLs||[]).forEach(u=>{if(u&&(u.startsWith('http')||u.startsWith('data:')))imgs.push({type:'image',src:u});});}));
+    const fails=[];AREAS.forEach(area=>Object.entries(ans[area]||{}).forEach(([q,a])=>{if(a?.answer==='FAIL'){
+          const qImgs=(a.imageURLs||[]).filter(u=>u&&u.startsWith('http'));
+          const qVids=(a.videoURLs||[]).filter(u=>u&&u.startsWith('http'));
+          fails.push({area,q,remark:a.remark||'',imgs:qImgs,vids:qVids});
+        }}));
+    const imgs=[];AREAS.forEach(area=>Object.values(ans[area]||{}).forEach(a=>{(a?.imageURLs||[]).forEach(u=>{if(u&&u.startsWith('http'))imgs.push({type:'image',src:u});});}));
     return{site,score:avgScore,auditor:String(latest['Auditor']||'—'),date:String(latest['Audit_Date']||'—'),hasData:true,areaScores,fails,imgs,entryCount:siteRecs.length};
   }),[records,sites,week]);
   const audited=siteData.filter(s=>s.hasData);
   const netAvg=audited.length?Math.round(audited.reduce((s,x)=>s+x.score,0)/audited.length):0;
   const areaAvgs=AREAS.map(area=>({area,color:ACLR[area],short:ASHORT[area],avg:audited.length?Math.round(audited.reduce((s,x)=>s+(x.areaScores[area]||0),0)/audited.length):0}));
-  const commonFails=useMemo(()=>{const f={};audited.forEach(s=>s.fails.forEach(fi=>{if(!f[fi.neg])f[fi.neg]={neg:fi.neg,count:0};f[fi.neg].count++;}));return Object.values(f).sort((a,b)=>b.count-a.count).slice(0,8);},[audited]);
+  // Build commonFails: aggregated per question across all audited sites
+  // includes site remarks and media for full context
+  const commonFails=useMemo(()=>{
+    const f={};
+    audited.forEach(s=>{
+      s.fails.forEach(fi=>{
+        const key=fi.q;
+        if(!f[key])f[key]={q:fi.q,area:fi.area,count:0,siteRemarks:[],imgs:[],vids:[]};
+        f[key].count++;
+        if(fi.remark)f[key].siteRemarks.push({site:s.site,remark:fi.remark});
+        fi.imgs.forEach(u=>{if(!f[key].imgs.includes(u))f[key].imgs.push(u);});
+        fi.vids.forEach(u=>{if(!f[key].vids.includes(u))f[key].vids.push(u);});
+      });
+    });
+    return Object.values(f).sort((a,b)=>b.count-a.count).slice(0,10);
+  },[audited]);
   const barData={labels:audited.map(s=>s.site.length>11?s.site.slice(0,11)+'…':s.site),datasets:[{label:'Score %',data:audited.map(s=>s.score),backgroundColor:audited.map(s=>scCol(s.score)+'99'),borderColor:audited.map(s=>scCol(s.score)),borderWidth:1,borderRadius:4}]};
   const barOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:true,color:'#fff',font:{size:9,weight:'bold',family:mono},formatter:v=>v+'%',anchor:'end',align:'top',offset:2}},scales:{x:{ticks:{color:C.muted,font:{size:9},maxRotation:45},grid:{color:C.border+'33'}},y:{min:0,max:105,ticks:{color:C.muted,callback:v=>v>100?'':v+'%'},grid:{color:C.border+'33'}}}};
   const sizeColor={Large:C.accent,Medium:C.blue,Small:C.purple};
@@ -2326,7 +2346,39 @@ function DCFacilityTab({records,week}){
     </div>
     ${audited.length>0?html`<div>
       <div class="card" style=${{padding:16,marginBottom:20}}><${SH}>${size} Segment — Area Averages</${SH}>${areaAvgs.map(a=>html`<div key=${a.area} style=${{marginBottom:12}}><div style=${{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style=${{fontSize:10,color:C.text,fontFamily:mono}}><b style=${{color:a.color}}>${a.short}</b> ${a.area}</span><span style=${{fontSize:14,color:a.color,fontFamily:mono,fontWeight:700}}>${a.avg}%</span></div><${PBar} v=${a.avg} color=${a.color} h=${6}/></div>`)}</div>
-      ${commonFails.length>0?html`<div class="card" style=${{padding:16,marginBottom:20}}><${SH} c=${C.fail}>Common Issues — ${size} Segment</${SH}>${commonFails.map((item,i)=>html`<div key=${i} style=${{display:'flex',gap:12,padding:'10px 0',borderBottom:i<commonFails.length-1?`1px solid ${C.border}20`:'none',alignItems:'flex-start'}}><div style=${{background:C.fail+'20',color:C.fail,border:`1px solid ${C.fail}44`,borderRadius:4,padding:'3px 10px',fontFamily:mono,fontSize:13,fontWeight:700,flexShrink:0,minWidth:42,textAlign:'center'}}>${item.count}</div><div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:600}}>${item.neg}</div></div>`)}</div>`:''}
+      ${commonFails.length>0?html`<div class="card" style=${{padding:16,marginBottom:20}}>
+      <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+        <span style=${{color:C.fail,fontFamily:mono,fontSize:12,fontWeight:700,letterSpacing:.8}}>⚠ COMMON ISSUES — ${size} SEGMENT</span>
+        <span style=${{background:C.fail+'20',color:C.fail,borderRadius:6,padding:'2px 10px',fontFamily:mono,fontSize:11,fontWeight:700,marginLeft:'auto'}}>${commonFails.length} issues</span>
+      </div>
+      ${commonFails.map((item,i)=>html`<div key=${i} style=${{borderBottom:i<commonFails.length-1?`1px solid ${C.border}20`:'none',padding:'12px 0'}}>
+        <div style=${{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
+          <span style=${{background:C.fail+'20',color:C.fail,border:`1px solid ${C.fail}44`,borderRadius:4,padding:'3px 10px',fontFamily:mono,fontSize:12,fontWeight:700,flexShrink:0}}>${item.count}x</span>
+          <div style=${{flex:1,minWidth:220}}>
+            <div style=${{color:'#fca5a5',fontFamily:mono,fontSize:11,fontWeight:700,lineHeight:1.5}}>${item.q}</div>
+            <div style=${{color:C.muted,fontSize:9,marginTop:2,fontFamily:mono}}>${item.area}</div>
+            ${item.siteRemarks.length>0?html`<div style=${{marginTop:6}}>
+              ${item.siteRemarks.map((sr,j)=>html`<div key=${j} style=${{fontSize:10,color:'#fbbf24',fontStyle:'italic',lineHeight:1.6,paddingLeft:8,borderLeft:`2px solid #fbbf2444`}}>
+                <b style=${{color:'rgba(255,255,255,.7)',fontStyle:'normal'}}>${sr.site}</b> — ${sr.remark}
+              </div>`)}
+            </div>`:''}
+          </div>
+          ${(item.imgs.length>0||item.vids.length>0)?html`<div style=${{display:'flex',flexWrap:'wrap',gap:5,flexShrink:0}}>
+            ${item.imgs.slice(0,4).map((u,j)=>html`<img key=${j} src=${driveImgSrc(u)}
+              onClick=${()=>setLb({items:[...item.imgs.map(s=>({type:'image',src:driveImgSrc(s)})),...item.vids.map(v=>({type:'video',url:v}))],idx:j})}
+              style=${{width:60,height:50,objectFit:'cover',borderRadius:5,cursor:'pointer',border:`2px solid ${C.fail}44`,transition:'all .15s'}}
+              onMouseEnter=${e=>{e.currentTarget.style.borderColor=C.fail;e.currentTarget.style.transform='scale(1.08)';}}
+              onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.fail+'44';e.currentTarget.style.transform='scale(1)';}}
+              onError=${e=>{const id=(u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/d\/([a-zA-Z0-9_-]+)/))?.[1];if(id&&!e.target.dataset.r){e.target.dataset.r=1;e.target.src='https://drive.google.com/uc?id='+id+'&export=view';}else{e.target.style.display='none';}}}/>`)}
+            ${item.vids.slice(0,2).map((u,j)=>html`<div key=${j}
+              onClick=${()=>setLb({items:[...item.imgs.map(s=>({type:'image',src:driveImgSrc(s)})),...item.vids.map(v=>({type:'video',url:v}))],idx:item.imgs.length+j})}
+              style=${{width:60,height:50,background:'#0a2030',border:`2px solid #06b6d444`,borderRadius:5,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,gap:1,transition:'border-color .15s'}}
+              onMouseEnter=${e=>e.currentTarget.style.borderColor=C.cyan}
+              onMouseLeave=${e=>e.currentTarget.style.borderColor='#06b6d444'}>🎥<span style=${{color:C.cyan,fontSize:7,fontFamily:mono}}>PLAY</span></div>`)}
+          </div>`:''}
+        </div>
+      </div>`)}
+    </div>`:''}
       ${audited.some(s=>s.imgs.length>0)?html`<div class="card" style=${{padding:16}}><${SH}>Image Gallery — ${size} DCs</${SH}>${audited.filter(s=>s.imgs.length>0).map(s=>html`<div key=${s.site} style=${{marginBottom:16}}><div style=${{color:C.muted,fontSize:10,fontFamily:mono,fontWeight:700,marginBottom:8}}>${s.site}</div><div style=${{display:'flex',flexWrap:'wrap',gap:8}}>${s.imgs.map((img,j)=>html`<img key=${j} src=${img.src} onClick=${()=>setLb({items:s.imgs,idx:j})} style=${{width:72,height:72,objectFit:'cover',borderRadius:6,cursor:'pointer',border:`2px solid ${C.border}`,transition:'all .15s'}} onMouseEnter=${e=>{e.currentTarget.style.borderColor=sizeColor[size];e.currentTarget.style.transform='scale(1.06)';}} onMouseLeave=${e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform='scale(1)';}} onError=${e=>e.currentTarget.style.display='none'}/>`)}</div></div>`)}</div>`:''}
     </div>`:''}
   </div>`;
