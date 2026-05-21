@@ -1703,7 +1703,67 @@ function OverviewTab({records,week}){
     <div style=${{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:16,flexWrap:'wrap'}}>
       <button onClick=${()=>generateEmailReport(records,activeWeeks,week,true)} style=${{background:'linear-gradient(135deg,#1e3a5f,#1d4ed8)',color:'#bfdbfe',border:`1px solid #3b82f655`,borderRadius:8,padding:'11px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .2s'}} onMouseEnter=${e=>e.currentTarget.style.transform='translateY(-1px)'} onMouseLeave=${e=>e.currentTarget.style.transform='translateY(0)'}>⬇ DOWNLOAD REPORT (HTML)</button>
       <button onClick=${()=>generateEmailReport(records,activeWeeks,week,false)} style=${{background:'linear-gradient(135deg,#0c4a6e,#075985)',color:'#7dd3fc',border:`1px solid #0ea5e955`,borderRadius:8,padding:'11px 20px',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .2s'}} onMouseEnter=${e=>e.currentTarget.style.transform='translateY(-1px)'} onMouseLeave=${e=>e.currentTarget.style.transform='translateY(0)'}>🖨 PRINT / PDF</button>
+      <button
+        onClick=${doMailReport}
+        disabled=${mailBusy}
+        style=${{
+          background:mailBusy?'rgba(0,0,0,.35)':'linear-gradient(135deg,#065f46,#1C856F)',
+          color:mailBusy?C.muted:'#E9DF43',
+          border:`2px solid ${mailBusy?'rgba(255,255,255,.08)':'#E9DF4344'}`,
+          borderRadius:8,padding:'11px 20px',fontFamily:mono,fontSize:11,fontWeight:700,
+          cursor:mailBusy?'not-allowed':'pointer',letterSpacing:.5,transition:'all .2s',
+          display:'inline-flex',alignItems:'center',gap:6
+        }}>
+        ${mailBusy?'⏳ GENERATING...':'✉ GENERATE MAIL REPORT'}
+      </button>
     </div>
+
+    ${showMail?html`<div style=${{
+      position:'fixed',top:0,left:0,right:0,bottom:0,
+      background:'rgba(0,0,0,.78)',zIndex:99999,
+      display:'flex',alignItems:'center',justifyContent:'center',
+      padding:16,backdropFilter:'blur(6px)'}}>
+      <div style=${{
+        background:'#0f2b22',border:'1px solid rgba(233,223,67,.35)',
+        borderRadius:14,width:'100%',maxWidth:660,maxHeight:'88vh',
+        display:'flex',flexDirection:'column',
+        boxShadow:'0 24px 80px rgba(0,0,0,.7)',overflow:'hidden'}}>
+        <div style=${{
+          display:'flex',alignItems:'center',justifyContent:'space-between',
+          padding:'16px 22px',borderBottom:'1px solid rgba(255,255,255,.08)',flexShrink:0}}>
+          <div>
+            <div style=${{color:'#E9DF43',fontFamily:mono,fontSize:12,fontWeight:700,letterSpacing:1.5}}>✉ WEEKLY MAIL REPORT</div>
+            <div style=${{color:C.muted,fontSize:10,marginTop:3}}>${fmtW(week)} · Auto-generated from latest dashboard data</div>
+          </div>
+          <button onClick=${()=>{setShowMail(false);setMailTxt('');}}
+            style=${{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.15)',
+            color:C.muted,borderRadius:6,padding:'7px 16px',fontFamily:mono,fontSize:11,cursor:'pointer'}}>
+            ✕ CLOSE
+          </button>
+        </div>
+        <div style=${{flex:1,overflow:'auto',padding:'18px 22px'}}>
+          ${mailBusy?html`<div style=${{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:200,gap:16}}>
+            <div style=${{fontSize:32,color:'#E9DF43'}}>◎</div>
+            <div style=${{color:C.muted,fontFamily:mono,fontSize:11}}>Generating report using AI...</div>
+          </div>`:html`<textarea readOnly value=${mailTxt} style=${{width:'100%',minHeight:340,background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,color:'#e2e8f0',fontFamily:"'Georgia',serif",fontSize:13,lineHeight:1.85,padding:'14px 16px',resize:'vertical',outline:'none',boxSizing:'border-box',whiteSpace:'pre-wrap'}}/>`}
+        </div>
+        ${(!mailBusy&&mailTxt)?html`<div style=${{display:'flex',gap:10,padding:'14px 22px',borderTop:'1px solid rgba(255,255,255,.08)',flexShrink:0,flexWrap:'wrap'}}>
+          <button onClick=${()=>{try{navigator.clipboard.writeText(mailTxt).then(()=>alert('Report copied successfully.'));}catch(e){const t=document.createElement('textarea');t.value=mailTxt;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);alert('Report copied successfully.');}}}
+            style=${{flex:1,minWidth:130,background:'rgba(233,223,67,.12)',color:'#E9DF43',border:'2px solid #E9DF4344',borderRadius:8,padding:'10px 0',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+            📋 COPY TO CLIPBOARD
+          </button>
+          <button onClick=${()=>{const b=new Blob([mailTxt],{type:'text/plain;charset=utf-8'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='Audit_Mail_Report_'+fmtW(week)+'.txt';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(u),8000);}}
+            style=${{flex:1,minWidth:130,background:'rgba(28,133,111,.15)',color:'#4ade80',border:'1px solid rgba(74,222,128,.3)',borderRadius:8,padding:'10px 0',fontFamily:mono,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+            ⬇ DOWNLOAD .txt
+          </button>
+          <button onClick=${doMailReport}
+            style=${{background:'rgba(0,0,0,.2)',color:C.muted,border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'10px 16px',fontFamily:mono,fontSize:11,cursor:'pointer',flexShrink:0}}>
+            ↺ REGENERATE
+          </button>
+        </div>`:''}
+      </div>
+    </div>`:''}
+
     <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))',gap:12,marginBottom:24}}>
       <div class="stat-card amber"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>DCS SUBMITTED</div><div style=${{color:C.accent,fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${dcAvgs.length}</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>of ${SITES.length} total</div></div>
       <div class="stat-card ${netAvg>=80?'green':netAvg>=60?'amber':'red'}"><div style=${{color:C.muted,fontSize:9,fontFamily:mono,letterSpacing:1.4,marginBottom:8}}>NETWORK AVERAGE</div><div style=${{color:scCol(netAvg),fontFamily:mono,fontSize:28,fontWeight:700,lineHeight:1}}>${netAvg}%</div><div style=${{color:C.muted,fontSize:10,marginTop:4}}>${scLabel(netAvg)}</div></div>
