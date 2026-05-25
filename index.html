@@ -1469,17 +1469,26 @@ td.na-q{color:#94a3b8}
 .fail-sentence{color:#991b1b;font-weight:600;font-size:11px;line-height:1.5}
 .fail-sentence .remark-inline{color:#92400e;font-weight:400;font-style:italic}
 .media-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:flex-start}
-.media-img{width:110px;height:75px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;cursor:pointer}
-.media-vid{width:110px;height:75px;border-radius:4px;border:1px solid #334155;background:#0f172a;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;text-decoration:none;color:#93c5fd;font-size:22px}
+.media-img{width:110px;height:75px;object-fit:cover;border-radius:5px;border:2px solid #e2e8f0;cursor:pointer;display:block;transition:opacity .15s}
+.media-vid{width:110px;height:75px;border-radius:5px;border:2px solid #1e40af;background:#0f172a;display:inline-flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;text-decoration:none;color:#60a5fa;font-size:26px;cursor:pointer;vertical-align:top}
 .area-score-grid{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .area-score-chip{border-radius:4px;padding:4px 10px;font-size:10px;font-weight:700;border:1px solid}
 .footer{margin-top:40px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:10px;text-align:center}
+.master-tbl-wrap{width:100%;overflow:visible}
+.master-tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;margin-bottom:12px}
+.master-tbl th{background:#1e293b;color:#f8fafc;padding:6px 4px;text-align:center;font-size:8.5px;letter-spacing:.2px;white-space:normal;word-break:break-word;line-height:1.3;border:1px solid #334155}
+.master-tbl th.left{text-align:left}
+.master-tbl td{border:1px solid #e2e8f0;padding:5px 4px;vertical-align:top;word-break:break-word;line-height:1.4}
 @media print{
   body{background:#fff}
   .page-border{margin:0;padding:0;background:none;border-radius:0}
   .wrap{padding:16px}
   .section-title{page-break-before:auto}
   .dc-section{page-break-inside:avoid}
+  .master-tbl-wrap{overflow:visible!important;width:100%!important}
+  .master-tbl{page-break-inside:auto;font-size:8px}
+  .master-tbl tr{page-break-inside:avoid}
+  .master-tbl thead{display:table-header-group}
 }
 </style></head><body><div class="page-border"><div class="wrap">
 <div class="hdr"><h1>📋 WEEKLY AUDIT SCORECARD — COLLATED REPORT</h1><p class="sub">Week ${fmtW(displayWeek)} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-IN')} &nbsp;|&nbsp; ${wRecs.length} DCs audited of ${SITES.length} total</p></div>
@@ -1508,9 +1517,18 @@ ${bot3.map((s,i)=>`<div style="display:flex;justify-content:space-between;align-
 
 <div class="section-title">D. MASTER QUESTION COMPARISON TABLE (${fmtW(displayWeek)})</div>
 ${auditedSites.length===0?'<p style="color:#94a3b8;font-style:italic;padding:10px">No data available for this week.</p>':
-`<div style="overflow-x:auto"><table>
-<tr><th class="left" style="min-width:200px">QUESTION</th><th class="left" style="min-width:130px">AREA</th>${auditedSites.map(s=>`<th style="min-width:80px;font-size:9px;white-space:normal">${s.length>12?s.slice(0,12)+'…':s}</th>`).join('')}</tr>
-${allQ.map(({area,q})=>`<tr><td class="left" style="font-size:10px">${q}</td><td class="left" style="font-size:9px;color:#64748b">${area}</td>${auditedSites.map(site=>{const a=ansMap[site]?.[area]?.[q];if(!a||!a.answer)return'<td class="n">—</td>';if(a.answer==='PASS')return'<td class="pass-q" style="text-align:center;font-weight:700">✓</td>';if(a.answer==='FAIL')return'<td class="fail-q" style="text-align:center;font-weight:700">✗</td>';return'<td class="na-q" style="text-align:center">—</td>';}).join('')}</tr>`).join('')}
+`<div class="master-tbl-wrap"><table class="master-tbl">
+<colgroup><col style="width:26%"><col style="width:13%">${auditedSites.map(()=>`<col style="width:${Math.max(5,Math.floor(61/auditedSites.length))}%">`).join('')}</colgroup>
+<thead><tr>
+<th class="left" style="white-space:normal;word-break:break-word">QUESTION</th>
+<th class="left" style="white-space:normal">AREA</th>
+${auditedSites.map(s=>`<th style="white-space:normal;word-break:break-word;text-align:center;font-size:8.5px;line-height:1.3;padding:5px 3px">${s}</th>`).join('')}
+</tr></thead>
+<tbody>${allQ.map(({area,q})=>`<tr>
+<td class="left" style="font-size:9.5px;line-height:1.4;white-space:normal;word-break:break-word">${q}</td>
+<td class="left" style="font-size:8px;color:#64748b;white-space:normal;line-height:1.3">${area}</td>
+${auditedSites.map(site=>{const a=ansMap[site]?.[area]?.[q];if(!a||!a.answer)return'<td class="n" style="text-align:center;font-size:14px">—</td>';if(a.answer==='PASS')return'<td class="pass-q" style="text-align:center;font-size:15px;font-weight:700;color:#166534">✓</td>';if(a.answer==='FAIL')return'<td class="fail-q" style="text-align:center;font-size:15px;font-weight:700;color:#991b1b">✗</td>';return'<td class="na-q" style="text-align:center">—</td>';}).join('')}
+</tr>`).join('')}</tbody>
 </table></div>`}
 
 <div class="section-title">E. DC PERFORMANCE BREAKDOWN — WITH EVIDENCE (${fmtW(displayWeek)})</div>
@@ -1527,7 +1545,16 @@ ${dc.areas.filter(a=>a.fails.length>0).map(a=>`<div class="area-row">
 ${a.fails.map(f=>`<div class="fail-item"><div style="flex:1">
 <div class="fail-sentence">⚠ ${f.q}${f.remark?` <span class="remark-inline">(Remark: ${f.remark})</span>`:''}</div>
 ${(f.imgs.length>0||f.vids.length>0)?`<div class="media-row">
-${f.imgs.map(u=>{const id=(u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/d\/([a-zA-Z0-9_-]+)/)||u.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/))?.[1];const href=id?'https://drive.google.com/file/d/'+id+'/view':u;return`<a href="${href}" target="_blank" rel="noopener" title="Click to open full size"><img class="media-img" src="${u}" loading="lazy" alt="evidence" style="cursor:pointer" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'" onerror="if(id&&!this.dataset.r){this.dataset.r=1;this.src='https://drive.google.com/uc?id='+id+'&export=view';}else{this.parentElement.innerHTML='<a href=\"'+href+'\">&#128247; View</a>';}"/></a>`;}).join('')}
+${f.imgs.map(u=>{
+  const id=(u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/d\/([a-zA-Z0-9_-]+)/)||u.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/))?.[1];
+  const src=id?'https://lh3.googleusercontent.com/d/'+id:u;
+  const href=id?'https://drive.google.com/file/d/'+id+'/view':u;
+  const fb1=id?'https://drive.google.com/uc?id='+id+'&export=view':href;
+  const fb2=id?'https://drive.google.com/thumbnail?id='+id+'&sz=w400':href;
+  return'<a href="'+href+'" target="_blank" rel="noopener" title="Click to open full size" data-f1="'+fb1+'" data-f2="'+fb2+'">'+
+    '<img class="media-img" src="'+src+'" loading="lazy" alt="evidence" '+
+    'onerror="var p=this.parentElement;if(!this.dataset.r){this.dataset.r=1;this.src=p.dataset.f1;}else if(!this.dataset.r2){this.dataset.r2=1;this.src=p.dataset.f2;}" '+
+    '/></a>';}).join('')}
 ${f.vids.map((u,vi)=>{const resolved=u.includes('drive.google.com')?u.replace('/view','/preview').replace('/open','/preview'):(u.startsWith('http')?u:'');return resolved?`<a class="media-vid" href="${resolved}" target="_blank" title="Open video">🎥<span style="font-size:9px">VIDEO ${vi+1}</span></a>`:'';}).join('')}
 </div>`:''}
 </div></div>`).join('')}
@@ -1889,7 +1916,6 @@ function generateDCReport(site,week,rec,answers,areaScores,fails,allMedia){
     return '<a href="'+href+'" target="_blank" rel="noopener" '+(useClass?'class="snap-item"':'')+
       ' style="'+wrapStyle+'" title="Click to open full size" data-f1="'+fb1+'" data-f2="'+fb2+'">'+
       '<img src="'+src+'" '+(useClass?'':'style="'+imgStyle+'"')+
-      ' onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'" '+
       'onerror="var p=this.parentElement;if(!this.dataset.r){this.dataset.r=1;this.src=p.dataset.f1;}else if(!this.dataset.r2){this.dataset.r2=1;this.src=p.dataset.f2;}" '+
       '/></a>';
   }
