@@ -1486,6 +1486,8 @@ td.na-q{color:#94a3b8}
   .cmp-table{table-layout:fixed !important;width:100% !important;font-size:7.5px !important;border-collapse:collapse !important}
   .cmp-table th{white-space:normal !important;word-break:break-word !important;word-wrap:break-word !important;overflow-wrap:break-word !important;padding:3px 2px !important;font-size:7.5px !important;min-width:0 !important;line-height:1.2 !important}
   .cmp-table td{white-space:normal !important;word-break:break-word !important;word-wrap:break-word !important;overflow-wrap:break-word !important;padding:3px 2px !important;font-size:7.5px !important;min-width:0 !important;line-height:1.3 !important}
+  .section-title{page-break-after:avoid !important}
+  .media-img{display:block !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 </style></head><body><div class="page-border"><div class="wrap">
 <div class="hdr"><h1>📋 WEEKLY AUDIT SCORECARD — COLLATED REPORT</h1><p class="sub">Week ${fmtW(displayWeek)} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-IN')} &nbsp;|&nbsp; ${wRecs.length} DCs audited of ${SITES.length} total</p></div>
@@ -1534,14 +1536,38 @@ ${dc.areas.filter(a=>a.fails.length>0).map(a=>`<div class="area-row">
 ${a.fails.map(f=>`<div class="fail-item"><div style="flex:1">
 <div class="fail-sentence">⚠ ${f.q}${f.remark?` <span class="remark-inline">(Remark: ${f.remark})</span>`:''}</div>
 ${(f.imgs.length>0||f.vids.length>0)?`<div class="media-row">
-${f.imgs.map(u=>{const idM=(u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/d\/([a-zA-Z0-9_-]+)/)||u.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/));const id=idM?idM[1]:null;const href=id?'https://drive.google.com/file/d/'+id+'/view':u;const src=id?'https://lh3.googleusercontent.com/d/'+id:u;const fb1=id?'https://drive.google.com/uc?id='+id+'&amp;export=view':href;const fb2=id?'https://drive.google.com/thumbnail?id='+id+'&amp;sz=w400':href;return`<a href="${href}" target="_blank" rel="noopener" title="Click to open full size" style="display:inline-block;text-decoration:none"><img class="media-img" src="${src}" loading="lazy" alt="evidence" style="cursor:pointer;display:block" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'" onerror="if(!this.dataset.r1){this.dataset.r1=1;this.src='${fb1}';}else if(!this.dataset.r2){this.dataset.r2=1;this.src='${fb2}';}else{this.style.display='none';var lnk=document.createElement('a');lnk.href='${href}';lnk.target='_blank';lnk.style='display:inline-flex;align-items:center;justify-content:center;width:110px;height:75px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;font-size:10px;color:#475569;text-decoration:none;';lnk.textContent='View Photo';this.parentElement.appendChild(lnk);}"/></a>`;}).join('')}
+${f.imgs.map(u=>{const idM=(u.match(/[?&]id=([a-zA-Z0-9_-]+)/)||u.match(/\/d\/([a-zA-Z0-9_-]+)/)||u.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/));const id=idM?idM[1]:null;const href=id?'https://drive.google.com/file/d/'+id+'/view':u;const src=id?'https://drive.google.com/thumbnail?id='+id+'&sz=w400':u;const fb1=id?'https://lh3.googleusercontent.com/d/'+id:href;const fb2=id?'https://drive.google.com/uc?id='+id+'&export=view':href;return`<a href="${href}" target="_blank" rel="noopener" title="Click to open full size" style="display:inline-block;text-decoration:none"><img class="media-img" src="${src}" loading="eager" alt="evidence" style="cursor:pointer;display:block;width:110px;height:75px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;background:#f8fafc" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'" onerror="if(!this.dataset.r1){this.dataset.r1=1;this.src='${fb1}';}else if(!this.dataset.r2){this.dataset.r2=1;this.src='${fb2}';}else{this.style.display='none';var lnk=document.createElement('a');lnk.href='${href}';lnk.target='_blank';lnk.style='display:inline-flex;align-items:center;justify-content:center;width:110px;height:75px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;font-size:10px;color:#475569;text-decoration:none;';lnk.textContent='View Photo';this.parentElement.appendChild(lnk);}"/></a>`;}).join('')}
 ${f.vids.map((u,vi)=>{const isDrive=u.includes('drive.google.com');const idM=u.match(/\/d\/([a-zA-Z0-9_-]+)/)||u.match(/id=([a-zA-Z0-9_-]+)/);const driveId=idM?idM[1]:null;const previewUrl=isDrive?(driveId?'https://drive.google.com/file/d/'+driveId+'/preview':u.replace('/view','/preview').replace('/open','/preview')):u;const thumbUrl=driveId?'https://drive.google.com/thumbnail?id='+driveId+'&sz=w200':null;const viewUrl=driveId?'https://drive.google.com/file/d/'+driveId+'/view':(u.startsWith('http')?u:'');if(!viewUrl)return'';return`<a class="media-vid" href="${previewUrl}" target="_blank" title="Open video ${vi+1}" style="position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:110px;height:75px;border-radius:4px;border:1px solid #334155;background:#0f172a;text-decoration:none;color:#93c5fd;overflow:hidden">${thumbUrl?`<img src="${thumbUrl}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.6" onerror="this.style.display='none'"/>`:''}<span style="position:relative;font-size:22px;line-height:1;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.8)">▶</span><span style="position:relative;font-size:8px;margin-top:3px;z-index:1;font-weight:600">VIDEO ${vi+1}</span></a>`;}).join('')}
 </div>`:''}
 </div></div>`).join('')}
 </div>`).join('')}
 </div></div>`;}).join('')}
 <div class="footer">Weekly Audit Scorecard System · Report generated: ${new Date().toLocaleString('en-IN')} · Week ${fmtW(displayWeek)}</div>
-</div></div></body></html>`;
+</div></div>
+<script>
+(function(){
+  var imgs=Array.from(document.querySelectorAll('img'));
+  if(imgs.length===0){setTimeout(function(){window.print();},400);return;}
+  var settled=0;var printed=false;
+  var fallback=setTimeout(function(){if(!printed){printed=true;window.print();}},10000);
+  function onSettled(){
+    settled++;
+    if(settled>=imgs.length&&!printed){
+      clearTimeout(fallback);
+      printed=true;
+      setTimeout(function(){window.print();},300);
+    }
+  }
+  imgs.forEach(function(img){
+    if(img.complete&&img.naturalHeight!==0){onSettled();}
+    else{
+      img.addEventListener('load',onSettled,{once:true});
+      img.addEventListener('error',onSettled,{once:true});
+    }
+  });
+})();
+</script>
+</body></html>`;
 
   if(downloadOnly){
     // ── Direct file download (no popup) ──
@@ -1557,7 +1583,9 @@ ${f.vids.map((u,vi)=>{const isDrive=u.includes('drive.google.com');const idM=u.m
   const w=window.open('','_blank');
   if(!w){alert('Popup blocked. Allow popups for one-click PDF, or use the Download HTML button instead.');return;}
   w.document.write(htmlBody);w.document.close();
-  setTimeout(()=>w.print(),900);
+  // Print is triggered by the embedded script inside htmlBody after all images load.
+  // This outer timeout is a safety fallback only (12s) in case the script fails.
+  setTimeout(()=>{try{if(w&&!w.closed)w.print();}catch(e){}},12000);
 }
 
 
